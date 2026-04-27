@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# APILens
 
-## Getting Started
+Project-based API version management & collaboration platform — fully static Next.js frontend with hardcoded mock data.
 
-First, run the development server:
+## Tech stack
+
+- Next.js 16 (App Router) + React 19
+- Tailwind CSS v4
+- Zustand for global state (mock data lives in memory)
+- React Hook Form + Zod for forms & validation
+- Lucide React for icons
+- Sonner for toasts
+- Custom shadcn-style UI primitives (Button, Card, Dialog, etc.)
+
+## Getting started
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000 — you'll be redirected to `/projects`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Routes
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `/sign-up`, `/sign-in`, `/forgot-password`, `/verify-email` — fake auth (just navigate on submit)
+- `/projects` — project list (create / open)
+- `/projects/[id]/dashboard` — metrics, activity, role-specific panels
+- `/projects/[id]/api-management` — file list (download / delete)
+- `/projects/[id]/api-management/upload` — drag-drop or URL → version metadata
+- `/projects/[id]/api-management/versions` — version table with status badges
+- `/projects/[id]/api-management/versions/[versionId]` — endpoint detail + AI summary
+- `/projects/[id]/compare` — diff viewer + AI explanation + Submit for review
+- `/projects/[id]/workflow` — approval queue (role-aware actions)
+- `/projects/[id]/workflow/[approvalId]` — approval detail with comments + approve/reject
+- `/projects/[id]/notifications` — notification list with mark-as-read
+- `/projects/[id]/settings` — owner-only project settings + delete
+- `/projects/[id]/settings/members` — invite, change roles, remove
+- `/projects/[id]/settings/history` — activity log + change history
+- `/profile` — edit name, telegram toggle, change password
 
-## Learn More
+## Role switcher
 
-To learn more about Next.js, take a look at the following resources:
+Use the **Role** dropdown in the top nav (right side, before the bell) to switch between Owner / Contributor / Reviewer. The sidebar and page-level UI react instantly:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Owner** — full access including Settings + breaking-changes overview
+- **Contributor** — Upload, Compare → Submit for review, see own submissions
+- **Reviewer** — Pending approvals, Approve / Reject with reasons
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Data model
 
-## Deploy on Vercel
+All mock data lives in `lib/mock-data.ts`. The Zustand store in `lib/store.ts` exposes mutators that:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Update relevant slices (projects, versions, approvals, etc.)
+- Append a new entry to `activities` for every mutation
+- Trigger appropriate notifications when relevant
