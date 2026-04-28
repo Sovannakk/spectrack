@@ -522,29 +522,37 @@ function buildSection4(): SectionData {
   const UP_X = 60;
   nodes.push(
     n(N("upload"), "feature", "Upload API (Owner / Contributor)", { x: UP_X, y: 120 }),
-    n(N("drop"), "action", "Drag-drop file or URL", { x: UP_X, y: 230 }),
+    n(N("drop"), "action", "Drag-drop file or paste URL", { x: UP_X, y: 230 }),
     n(N("valid"), "condition", "Valid format? (JSON / YAML)", { x: UP_X + 25, y: 330 }),
     n(N("error"), "process", "Show validation error", { x: 320, y: 360 }),
     n(N("extract"), "process", "Extract endpoints, params, schemas", { x: UP_X, y: 480 }),
-    n(N("preview"), "action", "Show extracted preview", { x: UP_X, y: 590 }),
-    n(N("meta"), "action", "Input version name + tags", { x: UP_X, y: 690 }),
-    n(N("submit"), "action", "Submit", { x: UP_X, y: 790 }),
+    n(N("preview"), "action", "Show extracted preview (collapsibles)", { x: UP_X, y: 590 }),
+    n(N("meta"), "action", "Input version name + tags", { x: UP_X, y: 700 }),
+    n(N("submit"), "action", "Submit", { x: UP_X, y: 810 }),
+    n(N("genUrl"), "process", "Generate cloud file URL", { x: UP_X, y: 920 }),
+    n(N("success"), "process", "Show success state + copy URL", {
+      x: UP_X,
+      y: 1030,
+    }),
   );
   edges.push(
     e(N("u1"), N("files"), N("upload")),
     e(N("u2"), N("upload"), N("drop")),
     e(N("u3"), N("drop"), N("valid")),
     e(N("u4-no"), N("valid"), N("error"), { label: "No", dir: "right" }),
-    e(N("u4-back"), N("error"), N("drop"), { dir: "up-l", dashed: true }),
+    // Loop-back: route via the RIGHT side of drop (top-source out of error,
+    // right-target into drop) so the line doesn't pass through drop itself.
+    e(N("u4-back"), N("error"), N("drop"), { dir: "up-r", dashed: true }),
     e(N("u4-yes"), N("valid"), N("extract"), { label: "Yes" }),
     e(N("u5"), N("extract"), N("preview")),
     e(N("u6"), N("preview"), N("meta")),
     e(N("u7"), N("meta"), N("submit")),
+    e(N("u8a"), N("submit"), N("genUrl")),
+    e(N("u8b"), N("genUrl"), N("success")),
   );
 
-  // Bottom row: Submit → Version List → Version Detail → docs/branches
-  // Single horizontal row at y=790, then branches go DOWN below it.
-  const ROW_Y = 790;
+  // Bottom row: Success → Version List → Version Detail → docs/branches
+  const ROW_Y = 1030;
   nodes.push(
     n(N("vlist"), "web", "Version List Page", { x: 320, y: ROW_Y }),
     n(N("vdetail"), "web", "Version Detail Page", { x: 580, y: ROW_Y }),
@@ -552,36 +560,64 @@ function buildSection4(): SectionData {
     n(N("paramsResp"), "process", "Endpoints + params + req/resp", { x: 1100, y: ROW_Y }),
   );
   edges.push(
-    e(N("u8"), N("submit"), N("vlist"), { dir: "right" }),
+    e(N("u9"), N("success"), N("vlist"), { dir: "right" }),
     e(N("v1"), N("vlist"), N("vdetail"), { label: "Click version", dir: "right" }),
     e(N("v2"), N("vdetail"), N("docs"), { dir: "right" }),
     e(N("v3"), N("docs"), N("paramsResp"), { dir: "right" }),
   );
 
   // Below Version Detail: Switch dropdown / Edit / Fix-resubmit branches
-  const BR_Y = 920;
+  const BR_Y = 1160;
   nodes.push(
-    n(N("switchVer"), "action", "Switch version dropdown", { x: 580, y: BR_Y }),
-    n(N("editVer"), "action", "Edit version name / tags", { x: 580, y: BR_Y + 110 }),
-    n(N("fix"), "feature", "Contributor: fix & resubmit", { x: 580, y: BR_Y + 220 }),
-    n(N("uploadCorr"), "action", "Upload corrected file", { x: 840, y: BR_Y + 220 }),
-    n(N("workflow"), "web", "Workflow Approvals", { x: 1100, y: BR_Y + 220 }),
-    n(N("timeline"), "feature", "Version history timeline", { x: 320, y: BR_Y }),
+    n(N("switchVer"), "action", "Switch version dropdown", {
+      x: 580,
+      y: BR_Y,
+    }),
+    n(N("editable"), "condition", "Status = draft or rejected?", {
+      x: 580 + 25,
+      y: BR_Y + 110,
+    }),
+    n(N("editVer"), "action", "Edit version name / tags", {
+      x: 580,
+      y: BR_Y + 260,
+    }),
+    n(N("fix"), "feature", "Contributor: fix & resubmit", {
+      x: 580,
+      y: BR_Y + 370,
+    }),
+    n(N("uploadCorr"), "action", "Upload corrected file", {
+      x: 840,
+      y: BR_Y + 370,
+    }),
+    n(N("workflow"), "web", "Workflow Approvals", {
+      x: 1100,
+      y: BR_Y + 370,
+    }),
+    n(N("timeline"), "feature", "Version history timeline", {
+      x: 320,
+      y: BR_Y,
+    }),
+    n(N("dlSpec"), "action", "Download spec → file download", {
+      x: 1100,
+      y: BR_Y,
+    }),
   );
   edges.push(
     e(N("v4"), N("vdetail"), N("switchVer")),
-    e(N("v5"), N("switchVer"), N("editVer")),
-    e(N("v6"), N("editVer"), N("fix")),
-    e(N("v7"), N("fix"), N("uploadCorr"), { dir: "right" }),
-    e(N("v8"), N("uploadCorr"), N("workflow"), { dir: "right" }),
-    e(N("v9"), N("vlist"), N("timeline"), { dir: "down" }),
+    e(N("v5"), N("switchVer"), N("editable")),
+    e(N("v6-yes"), N("editable"), N("editVer"), { label: "Yes" }),
+    e(N("v7"), N("editVer"), N("fix")),
+    e(N("v8"), N("fix"), N("uploadCorr"), { dir: "right" }),
+    e(N("v9"), N("uploadCorr"), N("workflow"), { dir: "right" }),
+    e(N("v10"), N("vlist"), N("timeline"), { dir: "down" }),
+    e(N("v11"), N("docs"), N("dlSpec"), { dir: "down" }),
   );
 
   return {
     id,
     label: "4 · API Management & Versioning",
     width: 1390,
-    height: BR_Y + 220 + 80,
+    height: BR_Y + 470,
     nodes,
     edges,
   };
@@ -709,7 +745,7 @@ function buildSection5(): SectionData {
 }
 
 // =====================================================================
-// Section 6 — Workflow & Collaboration
+// Section 6 — Workflow & Collaboration  (deeply detailed)
 // =====================================================================
 
 function buildSection6(): SectionData {
@@ -718,13 +754,16 @@ function buildSection6(): SectionData {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
-  // Column layout — wide enough that no two columns visually conflict.
+  // Columns laid out so no two ever overlap. Each column owns 210px + a 70px
+  // gutter so loop-back edges have room to route.
   const COL_CONTRIB = 60;
   const COL_STATUS = 340; // side branch from "Already submitted?"
   const COL_REVIEWER = 620;
-  const COL_APPROVE = 980;
-  const COL_BANNER = 1280; // safe banner / review carefully (Approve side branches)
-  const COL_REJECT = 1560;
+  const COL_COMMENTS = 920; // discussion / @mention sub-flow
+  const COL_MENTION_DROP = 1200; // @mention dropdown side branch
+  const COL_APPROVE = 1480;
+  const COL_BANNER = 1760; // safe / breaking banners (Approve side)
+  const COL_REJECT = 2040;
 
   // ---------- Contributor flow ----------
   nodes.push(
@@ -745,9 +784,17 @@ function buildSection6(): SectionData {
       x: COL_CONTRIB,
       y: 370,
     }),
-    n(N("notifReviewers"), "process", "Notify reviewers (email + in-app)", {
+    n(N("logActivity"), "process", "Log activity entry", {
       x: COL_CONTRIB,
       y: 480,
+    }),
+    n(N("notifReviewers"), "process", "Notify reviewers (email + in-app)", {
+      x: COL_CONTRIB,
+      y: 580,
+    }),
+    n(N("waitDecision"), "process", "Wait for reviewer decision", {
+      x: COL_CONTRIB,
+      y: 680,
     }),
   );
   edges.push(
@@ -755,42 +802,129 @@ function buildSection6(): SectionData {
     e(N("a2"), N("propose"), N("submitted")),
     e(N("a3-yes"), N("submitted"), N("status"), { label: "Yes", dir: "right" }),
     e(N("a3-no"), N("submitted"), N("create"), { label: "No" }),
-    e(N("a4"), N("create"), N("notifReviewers")),
+    e(N("a4"), N("create"), N("logActivity")),
+    e(N("a5"), N("logActivity"), N("notifReviewers")),
+    e(N("a6"), N("notifReviewers"), N("waitDecision")),
   );
 
   // ---------- Reviewer chain ----------
   nodes.push(
-    n(N("review"), "feature", "Reviewer: review", { x: COL_REVIEWER, y: 0 }),
-    n(N("detail"), "web", "Approval Detail Page", { x: COL_REVIEWER, y: 110 }),
-    n(N("viewDiff"), "action", "View diff between versions", {
+    n(N("review"), "feature", "Reviewer: open pending approval", {
+      x: COL_REVIEWER,
+      y: 0,
+    }),
+    n(N("detail"), "web", "Approval Detail Page", {
+      x: COL_REVIEWER,
+      y: 110,
+    }),
+    n(N("timeline"), "process", "Status timeline (Submitted → Review → Decision)", {
       x: COL_REVIEWER,
       y: 220,
     }),
-    n(N("comments"), "action", "Leave comments on endpoints", {
+    n(N("viewDiff"), "action", "View diff between versions", {
       x: COL_REVIEWER,
       y: 330,
     }),
-    n(N("mention"), "action", "@mention support", { x: COL_REVIEWER, y: 440 }),
-    n(N("notifyMention"), "process", "Notify mentioned user", {
+    n(N("filterDiff"), "action", "Filter by type (all / breaking / non-breaking)", {
+      x: COL_REVIEWER,
+      y: 440,
+    }),
+    n(N("inspect"), "action", "Inspect endpoint changes", {
       x: COL_REVIEWER,
       y: 550,
     }),
   );
   edges.push(
     e(N("r1"), N("review"), N("detail")),
-    e(N("r2"), N("detail"), N("viewDiff")),
-    e(N("r3"), N("viewDiff"), N("comments")),
-    e(N("r4"), N("comments"), N("mention")),
-    e(N("r5"), N("mention"), N("notifyMention")),
+    e(N("r2"), N("detail"), N("timeline")),
+    e(N("r3"), N("timeline"), N("viewDiff")),
+    e(N("r4"), N("viewDiff"), N("filterDiff")),
+    e(N("r5"), N("filterDiff"), N("inspect")),
   );
 
-  // ---------- Approve chain ----------
+  // ---------- Comment thread sub-flow (branches off "inspect" at y=550) ----------
+  // Aligned with inspect's y so the branching edge is a clean horizontal.
+  nodes.push(
+    n(N("openThread"), "action", "Open comment thread on endpoint", {
+      x: COL_COMMENTS,
+      y: 550,
+    }),
+    n(N("typeComment"), "action", "Type comment", {
+      x: COL_COMMENTS,
+      y: 660,
+    }),
+    n(N("atTyped"), "condition", "@ typed?", {
+      x: COL_COMMENTS + 25,
+      y: 770,
+    }),
+    n(N("memberDropdown"), "process", "Show member dropdown", {
+      x: COL_MENTION_DROP,
+      y: 800,
+    }),
+    n(N("selectMember"), "action", "Select member", {
+      x: COL_MENTION_DROP,
+      y: 910,
+    }),
+    n(N("nameInserted"), "process", "@Name inserted (highlighted)", {
+      x: COL_MENTION_DROP,
+      y: 1020,
+    }),
+    n(N("submitComment"), "action", "Submit comment", {
+      x: COL_COMMENTS,
+      y: 920,
+    }),
+    n(N("postThread"), "process", "Post to thread", {
+      x: COL_COMMENTS,
+      y: 1030,
+    }),
+    n(N("hasMention"), "condition", "Has mentions?", {
+      x: COL_COMMENTS + 25,
+      y: 1140,
+    }),
+    n(N("notifyMention"), "process", "Notify mentioned user (mention notif)", {
+      x: COL_MENTION_DROP,
+      y: 1170,
+    }),
+    n(N("notifyAll"), "process", "Notify all members (comment notif)", {
+      x: COL_COMMENTS,
+      y: 1290,
+    }),
+  );
+  edges.push(
+    e(N("c1"), N("inspect"), N("openThread"), { dir: "right" }),
+    e(N("c2"), N("openThread"), N("typeComment")),
+    e(N("c3"), N("typeComment"), N("atTyped")),
+    e(N("c4-yes"), N("atTyped"), N("memberDropdown"), {
+      label: "Yes",
+      dir: "right",
+    }),
+    e(N("c5"), N("memberDropdown"), N("selectMember")),
+    e(N("c6"), N("selectMember"), N("nameInserted")),
+    e(N("c7-back"), N("nameInserted"), N("typeComment"), {
+      dir: "loop-l",
+      dashed: true,
+    }),
+    e(N("c4-no"), N("atTyped"), N("submitComment"), {
+      label: "No",
+    }),
+    e(N("c8"), N("submitComment"), N("postThread")),
+    e(N("c9"), N("postThread"), N("hasMention")),
+    e(N("c10-yes"), N("hasMention"), N("notifyMention"), {
+      label: "Yes",
+      dir: "right",
+    }),
+    e(N("c10-no"), N("hasMention"), N("notifyAll"), {
+      label: "No",
+    }),
+    e(N("c11"), N("notifyMention"), N("notifyAll"), {
+      dir: "left",
+      dashed: true,
+    }),
+  );
+
+  // ---------- Approve flow (branches off Approval Detail) ----------
   nodes.push(
     n(N("decApprove"), "feature", "Decision: Approve", {
-      x: COL_APPROVE,
-      y: 110,
-    }),
-    n(N("optFeedback"), "action", "Optional feedback", {
       x: COL_APPROVE,
       y: 220,
     }),
@@ -798,102 +932,201 @@ function buildSection6(): SectionData {
       x: COL_APPROVE + 25,
       y: 330,
     }),
-    // Yes branch (right): safe-to-approve banner
     n(N("safeBanner"), "process", "Safe to approve banner", {
       x: COL_BANNER,
-      y: 340,
+      y: 350,
     }),
-    // No branch (right, below safeBanner): review carefully warning
-    n(N("reviewCarefully"), "process", "Review carefully (warning)", {
+    n(N("breakingWarn"), "process", "Breaking changes warning", {
       x: COL_BANNER,
-      y: 430,
+      y: 440,
     }),
-    n(N("updateApproved"), "process", "Update status: approved", {
+    n(N("approveModal"), "action", "Open Approve modal", {
       x: COL_APPROVE,
-      y: 490,
+      y: 480,
     }),
-    n(N("notifyContrib"), "process", "Email + in-app + Telegram", {
+    n(N("optFeedback"), "action", "Optional feedback / comment", {
       x: COL_APPROVE,
-      y: 600,
+      y: 590,
+    }),
+    n(N("clickConfirmA"), "action", "Click confirm", {
+      x: COL_APPROVE,
+      y: 700,
+    }),
+    n(N("updateAppr"), "process", "Update approval: approved", {
+      x: COL_APPROVE,
+      y: 810,
+    }),
+    n(N("updateVerAppr"), "process", "Update version status: approved", {
+      x: COL_APPROVE,
+      y: 910,
+    }),
+    n(N("notifyContribA"), "process", "Notify contributor (email + in-app + Telegram)", {
+      x: COL_APPROVE,
+      y: 1010,
+    }),
+    n(N("greenBadge"), "process", "Green badge on Version List", {
+      x: COL_APPROVE,
+      y: 1110,
     }),
   );
   edges.push(
     e(N("ap1"), N("detail"), N("decApprove"), { dir: "right" }),
-    e(N("ap2"), N("decApprove"), N("optFeedback")),
-    e(N("ap3"), N("optFeedback"), N("safeCheck")),
-    e(N("ap4-yes"), N("safeCheck"), N("safeBanner"), {
+    e(N("ap2"), N("decApprove"), N("safeCheck")),
+    e(N("ap3-yes"), N("safeCheck"), N("safeBanner"), {
       label: "Yes",
       dir: "right",
     }),
-    e(N("ap4-no"), N("safeCheck"), N("reviewCarefully"), {
+    e(N("ap3-no"), N("safeCheck"), N("breakingWarn"), {
       label: "No",
       dir: "right",
     }),
-    e(N("ap5"), N("safeCheck"), N("updateApproved")),
-    e(N("ap6"), N("updateApproved"), N("notifyContrib")),
+    e(N("ap4"), N("safeCheck"), N("approveModal")),
+    e(N("ap5"), N("approveModal"), N("optFeedback")),
+    e(N("ap6"), N("optFeedback"), N("clickConfirmA")),
+    e(N("ap7"), N("clickConfirmA"), N("updateAppr")),
+    e(N("ap8"), N("updateAppr"), N("updateVerAppr")),
+    e(N("ap9"), N("updateVerAppr"), N("notifyContribA")),
+    e(N("ap10"), N("notifyContribA"), N("greenBadge")),
   );
 
-  // ---------- Reject chain ----------
+  // ---------- Reject flow ----------
   nodes.push(
-    n(N("decReject"), "feature", "Decision: Reject", { x: COL_REJECT, y: 110 }),
-    n(N("reqReason"), "action", "Required reason", { x: COL_REJECT, y: 220 }),
-    n(N("updateRejected"), "process", "Update status: rejected", {
+    n(N("decReject"), "feature", "Decision: Reject", {
+      x: COL_REJECT,
+      y: 220,
+    }),
+    n(N("rejectModal"), "action", "Open Reject modal", {
       x: COL_REJECT,
       y: 330,
     }),
-    n(N("notifyReject"), "process", "Notify contributor", {
+    n(N("reqReason"), "action", "Required: reason text", {
       x: COL_REJECT,
       y: 440,
     }),
+    n(N("reasonValid"), "condition", "Reason provided?", {
+      x: COL_REJECT + 25,
+      y: 550,
+    }),
+    n(N("clickConfirmR"), "action", "Click confirm", {
+      x: COL_REJECT,
+      y: 700,
+    }),
+    n(N("updateRej"), "process", "Update approval: rejected", {
+      x: COL_REJECT,
+      y: 810,
+    }),
+    n(N("updateVerRej"), "process", "Update version status: rejected", {
+      x: COL_REJECT,
+      y: 910,
+    }),
+    n(N("notifyContribR"), "process", "Notify contributor", {
+      x: COL_REJECT,
+      y: 1010,
+    }),
     n(N("inlineRej"), "process", "Inline rejection on Version List", {
       x: COL_REJECT,
-      y: 550,
+      y: 1110,
+    }),
+    n(N("fixResubmit"), "feature", "Contributor: Fix & Resubmit", {
+      x: COL_REJECT,
+      y: 1210,
     }),
   );
   edges.push(
     e(N("rj1"), N("decApprove"), N("decReject"), { dir: "right" }),
-    e(N("rj2"), N("decReject"), N("reqReason")),
-    e(N("rj3"), N("reqReason"), N("updateRejected")),
-    e(N("rj4"), N("updateRejected"), N("notifyReject")),
-    e(N("rj5"), N("notifyReject"), N("inlineRej")),
+    e(N("rj2"), N("decReject"), N("rejectModal")),
+    e(N("rj3"), N("rejectModal"), N("reqReason")),
+    e(N("rj4"), N("reqReason"), N("reasonValid")),
+    e(N("rj5-no"), N("reasonValid"), N("reqReason"), {
+      label: "No",
+      dir: "loop-l",
+      dashed: true,
+    }),
+    e(N("rj5-yes"), N("reasonValid"), N("clickConfirmR"), {
+      label: "Yes",
+    }),
+    e(N("rj6"), N("clickConfirmR"), N("updateRej")),
+    e(N("rj7"), N("updateRej"), N("updateVerRej")),
+    e(N("rj8"), N("updateVerRej"), N("notifyContribR")),
+    e(N("rj9"), N("notifyContribR"), N("inlineRej")),
+    e(N("rj10"), N("inlineRej"), N("fixResubmit")),
   );
 
-  // ---------- Notifications branch (well below the rest) ----------
-  const NOTIF_Y = 750;
+  // ---------- Notifications system (well below the contributor column) ----------
+  const NOTIF_Y = 850;
   nodes.push(
-    n(N("notif"), "feature", "Notifications", { x: COL_CONTRIB, y: NOTIF_Y }),
-    n(N("bell"), "action", "Bell dropdown: latest 5", {
+    n(N("notif"), "feature", "Notifications", {
+      x: COL_CONTRIB,
+      y: NOTIF_Y,
+    }),
+    n(N("bellTopnav"), "action", "Bell icon in TopNav", {
       x: COL_CONTRIB,
       y: NOTIF_Y + 110,
     }),
-    n(N("markRead"), "action", "Mark as read → update count", {
+    n(N("bellDropdown"), "action", "Bell dropdown: latest 5", {
       x: COL_CONTRIB,
       y: NOTIF_Y + 220,
     }),
+    n(N("clickNotif"), "condition", "Click notification?", {
+      x: COL_CONTRIB + 25,
+      y: NOTIF_Y + 330,
+    }),
+    n(N("navigate"), "process", "Navigate to source page", {
+      x: COL_STATUS,
+      y: NOTIF_Y + 360,
+    }),
+    n(N("markRead"), "process", "Mark as read", {
+      x: COL_STATUS,
+      y: NOTIF_Y + 470,
+    }),
+    n(N("updateUnread"), "process", "Update unread count badge", {
+      x: COL_CONTRIB,
+      y: NOTIF_Y + 480,
+    }),
+    n(N("viewAll"), "action", "View all", {
+      x: COL_CONTRIB,
+      y: NOTIF_Y + 590,
+    }),
     n(N("allNotifs"), "web", "Notifications Page", {
       x: COL_STATUS,
-      y: NOTIF_Y + 220,
+      y: NOTIF_Y + 590,
     }),
-    n(N("markAllRead"), "action", "Mark all read → badge clears", {
+    n(N("markAllRead"), "action", "Mark all read", {
       x: COL_STATUS,
-      y: NOTIF_Y + 330,
+      y: NOTIF_Y + 700,
+    }),
+    n(N("badgeClears"), "process", "Badge clears (count = 0)", {
+      x: COL_STATUS,
+      y: NOTIF_Y + 810,
     }),
   );
   edges.push(
-    e(N("n1"), N("notif"), N("bell")),
-    e(N("n2"), N("bell"), N("markRead")),
-    e(N("n3"), N("markRead"), N("allNotifs"), {
-      label: "View all",
+    e(N("n1"), N("notif"), N("bellTopnav")),
+    e(N("n2"), N("bellTopnav"), N("bellDropdown")),
+    e(N("n3"), N("bellDropdown"), N("clickNotif")),
+    e(N("n4-yes"), N("clickNotif"), N("navigate"), {
+      label: "Yes",
       dir: "right",
     }),
-    e(N("n4"), N("allNotifs"), N("markAllRead")),
+    e(N("n5"), N("navigate"), N("markRead")),
+    e(N("n6-no"), N("clickNotif"), N("updateUnread"), {
+      label: "No",
+    }),
+    e(N("n7"), N("markRead"), N("updateUnread"), {
+      dir: "left",
+      dashed: true,
+    }),
+    e(N("n8"), N("updateUnread"), N("viewAll")),
+    e(N("n9"), N("viewAll"), N("allNotifs"), { dir: "right" }),
+    e(N("n10"), N("allNotifs"), N("markAllRead")),
+    e(N("n11"), N("markAllRead"), N("badgeClears")),
   );
 
   return {
     id,
     label: "6 · Workflow & Collaboration",
     width: COL_REJECT + 210 + 80,
-    height: NOTIF_Y + 410,
+    height: NOTIF_Y + 870,
     nodes,
     edges,
   };
@@ -909,7 +1142,67 @@ function buildSection7(): SectionData {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
-  nodes.push(n(N("dash"), "web", "Dashboard Page", { x: 660, y: 0 }));
+  // Layout: Dashboard centered above 4 role cols; `Empty?` diamond directly
+  // below the dashboard, with "Yes" branching LEFT (clean horizontal at the
+  // same y as the diamond) into the Welcome Checklist sub-flow. This avoids
+  // long fan-out edges crossing role columns.
+  const COL_X0 = 380; // first role column
+  const COL_W = 280;
+  const EVOL_X = COL_X0 + 4 * COL_W; // 1500
+  const DASH_X = 600; // centered above role cols (between owner and contrib)
+  const WC_X = 60; // welcome checklist column on the far left
+
+  // ---------- Top: Dashboard + empty gate ----------
+  nodes.push(
+    n(N("dash"), "web", "Dashboard Page", { x: DASH_X, y: 0 }),
+    n(N("empty"), "condition", "Empty project? (no API files)", {
+      x: DASH_X + 25,
+      y: 110,
+    }),
+  );
+  edges.push(e(N("e-dash-empty"), N("dash"), N("empty")));
+
+  // ---------- Welcome Checklist (Yes branch) ----------
+  // Welcome lives at the SAME y as the empty diamond so the "Yes" edge is a
+  // clean short horizontal. Steps then chain straight down underneath.
+  nodes.push(
+    n(N("welcome"), "feature", "Welcome checklist (UX-ONB-01)", {
+      x: WC_X,
+      y: 130,
+    }),
+    n(N("wcStep1"), "action", "Step 1: Upload API", { x: WC_X, y: 240 }),
+    n(N("wcStep2"), "action", "Step 2: Create version (locked until #1)", {
+      x: WC_X,
+      y: 350,
+    }),
+    n(N("wcStep3"), "action", "Step 3: Invite teammate", {
+      x: WC_X,
+      y: 460,
+    }),
+    n(N("wcSkip"), "action", "Skip / dismiss → setupDismissed", {
+      x: WC_X,
+      y: 570,
+    }),
+    n(N("wcDone"), "process", "Show normal dashboard from now on", {
+      x: WC_X,
+      y: 680,
+    }),
+  );
+  edges.push(
+    // Yes branch: l-src of diamond → r-tgt of welcome (clean horizontal in the
+    // y=130-170 band; nothing else in this area between x=270 and x=600).
+    e(N("e-empty-wc"), N("empty"), N("welcome"), {
+      label: "Yes",
+      dir: "left",
+    }),
+    e(N("e-wc1"), N("welcome"), N("wcStep1")),
+    e(N("e-wc2"), N("wcStep1"), N("wcStep2")),
+    e(N("e-wc3"), N("wcStep2"), N("wcStep3")),
+    e(N("e-wc4"), N("wcStep3"), N("wcSkip")),
+    e(N("e-wc5"), N("wcSkip"), N("wcDone")),
+  );
+
+  // ---------- Normal dashboard (No branch) — 4 role columns + Evolution ----------
   const cols: {
     id: string;
     label: string;
@@ -920,9 +1213,12 @@ function buildSection7(): SectionData {
       label: "All roles",
       items: [
         { type: "process", label: "Metric cards (APIs · versions · members)" },
-        { type: "process", label: "Diff preview widget" },
+        { type: "process", label: "API evolution timeline (mini)" },
+        { type: "process", label: "Latest changes preview" },
         { type: "action", label: "Click 'View full diff' → Compare" },
         { type: "process", label: "Recent activity feed" },
+        { type: "feature", label: "Quick actions card" },
+        { type: "action", label: "Upload API · Compare · View approvals" },
       ],
     },
     {
@@ -930,13 +1226,17 @@ function buildSection7(): SectionData {
       label: "Owner",
       items: [
         { type: "process", label: "Breaking change stats chart" },
+        { type: "process", label: "Top breaking changes list" },
         { type: "process", label: "Full activity logs" },
       ],
     },
     {
       id: "contrib",
       label: "Contributor",
-      items: [{ type: "process", label: "Track own submission statuses" }],
+      items: [
+        { type: "process", label: "Track own submission statuses" },
+        { type: "process", label: "Status badges per submission" },
+      ],
     },
     {
       id: "reviewer",
@@ -949,39 +1249,58 @@ function buildSection7(): SectionData {
     },
   ];
 
+  // A single "rail" row at y=240 acts as a bus: empty?(No) connects to a
+  // central rail node, and the rail node connects out to each role column.
+  // This keeps edge fan-out short and predictable.
+  nodes.push(
+    n(N("rail"), "process", "Render normal dashboard", {
+      x: DASH_X,
+      y: 270,
+    }),
+  );
+  edges.push(
+    e(N("e-empty-rail"), N("empty"), N("rail"), { label: "No" }),
+  );
+
   cols.forEach((c, i) => {
-    const x = 60 + i * 320;
-    nodes.push(n(N(c.id), "feature", c.label, { x, y: 130 }));
-    edges.push(e(N(`e-dash-${c.id}`), N("dash"), N(c.id)));
+    const x = COL_X0 + i * COL_W;
+    // Each role feature sits a row below the rail; the edge from rail to
+    // each role is short enough that smoothstep doesn't need to cross
+    // anything.
+    nodes.push(n(N(c.id), "feature", c.label, { x, y: 380 }));
+    edges.push(e(N(`e-rail-${c.id}`), N("rail"), N(c.id)));
     c.items.forEach((it, j) => {
       const subId = `${c.id}-${j}`;
-      nodes.push(n(N(subId), it.type, it.label, { x, y: 230 + j * 90 }));
+      nodes.push(n(N(subId), it.type, it.label, { x, y: 490 + j * 90 }));
       const prev = j === 0 ? c.id : `${c.id}-${j - 1}`;
       edges.push(e(N(`e-${subId}`), N(prev), N(subId)));
     });
   });
 
-  // Evolution timeline lives in a 5th column on the right, same y as Dashboard
-  // so it reads as a peer flow rather than floating below all the role columns.
-  const EVOL_X = 60 + 4 * 320; // = 1340
+  // Evolution timeline in its own column (right of all role columns)
   nodes.push(
-    n(N("evol"), "feature", "API Evolution Timeline", { x: EVOL_X, y: 130 }),
+    n(N("evol"), "feature", "API Evolution Timeline", {
+      x: EVOL_X,
+      y: 380,
+    }),
     n(N("evolTimeline"), "process", "All versions chronologically", {
       x: EVOL_X,
-      y: 230,
+      y: 490,
     }),
-    n(N("vd"), "web", "Version Detail Page", { x: EVOL_X, y: 320 }),
+    n(N("vd"), "web", "Version Detail Page", { x: EVOL_X, y: 600 }),
   );
   edges.push(
+    e(N("e-rail-evol"), N("rail"), N("evol")),
     e(N("e-evol-tl"), N("evol"), N("evolTimeline")),
     e(N("e-evol-vd"), N("evolTimeline"), N("vd"), { label: "Click version" }),
   );
 
+  // Tallest column = "All roles" with 7 items, ending at y = 490 + 6*90 + 50 = 1080
   return {
     id,
     label: "7 · Visualization & Dashboard",
     width: EVOL_X + 210 + 80,
-    height: 620,
+    height: 1140,
     nodes,
     edges,
   };

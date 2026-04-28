@@ -8,7 +8,7 @@ export default function WorkflowDiagramPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Workflow diagram"
+        title="Flow diagram"
         description="Complete user-flow map of APILens — every page, action, feature, process, and decision point across all 9 feature areas."
       />
       <WorkflowDiagram />

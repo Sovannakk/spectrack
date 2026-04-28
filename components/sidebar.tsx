@@ -155,7 +155,7 @@ export function Sidebar({
       ],
     },
     {
-      label: "Workflow",
+      label: "Review",
       items: [
         {
           label: "Approvals",
@@ -273,11 +273,11 @@ export function Sidebar({
 
       <div className="space-y-0.5 border-t border-white/40 p-3 dark:border-stone-800/60">
         <SidebarLink
-          href={`/projects/${projectId}/workflow-diagram`}
-          active={pathname === `/projects/${projectId}/workflow-diagram`}
+          href={`/projects/${projectId}/flow-diagram`}
+          active={pathname === `/projects/${projectId}/flow-diagram`}
           icon={<Network className="h-4 w-4" />}
         >
-          Workflow diagram
+          Flow diagram
         </SidebarLink>
         <SidebarLink
           href="/profile"
