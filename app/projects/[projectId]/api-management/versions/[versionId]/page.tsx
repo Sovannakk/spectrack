@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Copy, Search } from "lucide-react";
+import { ArrowRight, Copy, GitCompare, Search } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/store";
 import { usePageLoader } from "@/components/page-loader";
@@ -16,14 +17,17 @@ import {
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
 import { EndpointDoc } from "@/components/endpoint-doc";
+import { MethodFilter } from "@/components/method-filter";
+import { RelativeTime } from "@/components/relative-time";
+import type { HttpMethod } from "@/lib/types";
 import { VersionAISummary } from "@/components/version-ai-summary";
 import { ResubmitBanner } from "@/components/resubmit-banner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/page-header";
-import { formatDate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 
 const baseUrlForProject = (name: string) =>
   `https://api.${name.toLowerCase().replace(/\s+/g, "")}.dev/v1`;
@@ -63,17 +67,29 @@ export default function VersionDetailPage() {
       ),
     [allEndpoints, projectId, versionId],
   );
+  const sortedAsc = React.useMemo(
+    () =>
+      versions
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(a.createdAt).getTime() -
+            new Date(b.createdAt).getTime(),
+        ),
+    [versions],
+  );
   const previousVersion = React.useMemo(() => {
     if (!version) return undefined;
-    const sorted = versions
-      .slice()
-      .sort(
-        (a, b) =>
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-      );
-    const idx = sorted.findIndex((v) => v.id === version.id);
-    return idx > 0 ? sorted[idx - 1] : undefined;
-  }, [versions, version]);
+    const idx = sortedAsc.findIndex((v) => v.id === version.id);
+    return idx > 0 ? sortedAsc[idx - 1] : undefined;
+  }, [sortedAsc, version]);
+  const nextVersion = React.useMemo(() => {
+    if (!version) return undefined;
+    const idx = sortedAsc.findIndex((v) => v.id === version.id);
+    return idx >= 0 && idx < sortedAsc.length - 1
+      ? sortedAsc[idx + 1]
+      : undefined;
+  }, [sortedAsc, version]);
   const diffsAgainstPrev = React.useMemo(
     () =>
       previousVersion && version
@@ -107,13 +123,19 @@ export default function VersionDetailPage() {
   );
 
   const [search, setSearch] = React.useState("");
+  const [methodFilter, setMethodFilter] = React.useState<HttpMethod | "ALL">(
+    "ALL",
+  );
 
-  const filtered = endpoints.filter(
-    (e) =>
+  const filtered = endpoints.filter((e) => {
+    const matchesSearch =
       e.path.toLowerCase().includes(search.toLowerCase()) ||
       e.summary.toLowerCase().includes(search.toLowerCase()) ||
-      e.method.toLowerCase().includes(search.toLowerCase()),
-  );
+      e.method.toLowerCase().includes(search.toLowerCase());
+    const matchesMethod =
+      methodFilter === "ALL" ? true : e.method === methodFilter;
+    return matchesSearch && matchesMethod;
+  });
 
   if (loading) return <Skeleton className="h-96" />;
 
@@ -137,7 +159,12 @@ export default function VersionDetailPage() {
     <div className="space-y-6">
       <PageHeader
         title={`${project?.name ?? ""} — ${version.name}`}
-        description={`Created by ${version.createdBy} · ${formatDate(version.createdAt)}`}
+        description={
+          <>
+            Created by {version.createdBy} ·{" "}
+            <RelativeTime timestamp={version.createdAt} />
+          </>
+        }
         meta={
           <>
             <StatusBadge status={version.status} />
@@ -149,20 +176,32 @@ export default function VersionDetailPage() {
           </>
         }
         actions={
-          <div className="w-56">
-            <Select
-              options={versions.map((v) => ({
-                value: v.id,
-                label: `${v.name} (${v.status})`,
-              }))}
-              value={versionId}
-              onValueChange={(id) =>
-                router.push(
-                  `/projects/${projectId}/api-management/versions/${id}`,
-                )
-              }
-            />
-          </div>
+          <>
+            {nextVersion && (
+              <Link
+                href={`/projects/${projectId}/compare?from=${version.name}&to=${nextVersion.name}`}
+                className={cn(buttonVariants({ variant: "outline" }))}
+              >
+                <GitCompare className="h-4 w-4" />
+                Compare with {nextVersion.name}
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            )}
+            <div className="w-56">
+              <Select
+                options={versions.map((v) => ({
+                  value: v.id,
+                  label: `${v.name} (${v.status})`,
+                }))}
+                value={versionId}
+                onValueChange={(id) =>
+                  router.push(
+                    `/projects/${projectId}/api-management/versions/${id}`,
+                  )
+                }
+              />
+            </div>
+          </>
         }
       />
 
@@ -224,14 +263,21 @@ export default function VersionDetailPage() {
             />
           </div>
         </CardHeader>
-        <CardContent className="space-y-2">
-          {filtered.length === 0 ? (
-            <p className="py-8 text-center text-sm text-stone-500">
-              No endpoints match your search.
-            </p>
-          ) : (
-            filtered.map((e) => <EndpointDoc key={e.id} endpoint={e} />)
-          )}
+        <CardContent className="space-y-3">
+          <MethodFilter
+            endpoints={endpoints}
+            activeMethod={methodFilter}
+            onChange={setMethodFilter}
+          />
+          <div className="space-y-2">
+            {filtered.length === 0 ? (
+              <p className="py-8 text-center text-sm text-stone-500">
+                No endpoints match your filter.
+              </p>
+            ) : (
+              filtered.map((e) => <EndpointDoc key={e.id} endpoint={e} />)
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>

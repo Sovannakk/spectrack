@@ -15,10 +15,12 @@ import {
   GitCompare,
   History,
   LayoutDashboard,
+  Plus,
   Settings,
   Upload,
   UserCog,
   Users,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAppStore, useUnreadCount } from "@/lib/store";
@@ -31,7 +33,7 @@ import {
   DropdownTrigger,
 } from "@/components/ui/dropdown";
 import { Brand } from "@/components/brand";
-import type { Role } from "@/lib/types";
+import type { ApiVersion, Member, Project, Role } from "@/lib/types";
 
 interface NavItem {
   label: string;
@@ -48,17 +50,64 @@ interface NavSection {
   roles?: Role[];
 }
 
-export function Sidebar({ projectId }: { projectId: string }) {
+interface SidebarProps {
+  projectId: string;
+  /** Open state for the mobile drawer */
+  mobileOpen?: boolean;
+  /** Close handler for the mobile drawer */
+  onMobileClose?: () => void;
+}
+
+export function Sidebar({
+  projectId,
+  mobileOpen = false,
+  onMobileClose,
+}: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const role = useAppStore((s) => s.currentUser.role);
+  const me = useAppStore((s) => s.currentUser);
   const projects = useAppStore((s) => s.projects);
   const allApprovals = useAppStore((s) => s.approvals);
+  const allVersions = useAppStore((s) => s.versions);
+  const allMembers = useAppStore((s) => s.members);
+  const recentProjectIds = useAppStore((s) => s.recentProjectIds);
   const project = projects.find((p) => p.id === projectId);
   const unread = useUnreadCount(projectId);
   const pendingApprovals = allApprovals.filter(
     (a) => a.projectId === projectId && a.status === "pending",
   ).length;
+  // UX-NAV-02 — Versions badge: contributors only see their own; reviewers see none
+  const pendingVersionsForUser = React.useMemo(() => {
+    if (role === "reviewer") return 0;
+    const list = allVersions.filter(
+      (v) => v.projectId === projectId && v.status === "pending",
+    );
+    if (role === "contributor") {
+      return list.filter((v) => v.createdBy === me.name).length;
+    }
+    return list.length;
+  }, [allVersions, projectId, role, me.name]);
+  // Reviewers don't have submissions of their own, so hide the versions badge for them
+  const versionsBadge =
+    role !== "reviewer" && pendingVersionsForUser > 0
+      ? { value: capBadge(pendingVersionsForUser), tone: "blue" as const }
+      : undefined;
+  // Contributors don't approve, so suppress the approvals badge for them
+  const approvalsBadge =
+    role !== "contributor" && pendingApprovals > 0
+      ? { value: capBadge(pendingApprovals), tone: "blue" as const }
+      : undefined;
+  const notificationsBadge =
+    unread > 0
+      ? { value: capBadge(unread), tone: "red" as const }
+      : undefined;
+
+  // Close drawer on route change
+  React.useEffect(() => {
+    if (mobileOpen) onMobileClose?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   const sections: NavSection[] = [
     {
@@ -84,6 +133,7 @@ export function Sidebar({ projectId }: { projectId: string }) {
           label: "Versions",
           href: `/projects/${projectId}/api-management/versions`,
           icon: <GitBranch className="h-4 w-4" />,
+          badge: versionsBadge,
         },
         {
           label: "Documentation",
@@ -110,16 +160,13 @@ export function Sidebar({ projectId }: { projectId: string }) {
           label: "Approvals",
           href: `/projects/${projectId}/workflow`,
           icon: <ClipboardCheck className="h-4 w-4" />,
-          badge:
-            pendingApprovals > 0
-              ? { value: pendingApprovals, tone: "blue" }
-              : undefined,
+          badge: approvalsBadge,
         },
         {
           label: "Notifications",
           href: `/projects/${projectId}/notifications`,
           icon: <Bell className="h-4 w-4" />,
-          badge: unread > 0 ? { value: unread, tone: "red" } : undefined,
+          badge: notificationsBadge,
         },
       ],
     },
@@ -150,10 +197,19 @@ export function Sidebar({ projectId }: { projectId: string }) {
   const isActive = (href: string, exact?: boolean) =>
     exact ? pathname === href : pathname.startsWith(href);
 
-  return (
-    <aside className="hidden md:flex md:w-60 md:flex-col border-r border-white/40 bg-white/40 backdrop-blur-xl dark:border-stone-800/60 dark:bg-stone-950/40 sticky top-0 h-screen">
-      <div className="flex h-14 items-center px-4 border-b border-white/40 dark:border-stone-800/60">
+  const content = (
+    <>
+      <div className="flex h-14 items-center justify-between px-4 border-b border-white/40 dark:border-stone-800/60">
         <Brand size="md" />
+        {/* Close button visible only on the mobile drawer */}
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={onMobileClose}
+          className="md:hidden inline-flex h-8 w-8 items-center justify-center rounded-md text-stone-500 hover:bg-white/60 hover:text-stone-900 dark:hover:bg-stone-800/60"
+        >
+          <X className="h-4 w-4" />
+        </button>
       </div>
 
       <div className="px-3 pt-3">
@@ -167,25 +223,16 @@ export function Sidebar({ projectId }: { projectId: string }) {
             </span>
             <ChevronsUpDown className="ml-auto h-3.5 w-3.5 shrink-0 text-stone-400" />
           </DropdownTrigger>
-          <DropdownMenu align="start" className="w-56">
-            <DropdownLabel>Switch project</DropdownLabel>
-            <DropdownSeparator />
-            {projects.map((p) => (
-              <DropdownItem
-                key={p.id}
-                onSelect={() => router.push(`/projects/${p.id}/dashboard`)}
-              >
-                <span className="flex-1 truncate">{p.name}</span>
-                {p.id === projectId && (
-                  <Check className="h-3.5 w-3.5 text-orange-500" />
-                )}
-              </DropdownItem>
-            ))}
-            <DropdownSeparator />
-            <DropdownItem onSelect={() => router.push("/projects")}>
-              <FolderKanban className="h-3.5 w-3.5" />
-              All projects
-            </DropdownItem>
+          <DropdownMenu align="start" className="w-72">
+            <ProjectSwitcherMenu
+              projects={projects}
+              activeId={projectId}
+              recentIds={recentProjectIds}
+              memberCounts={countMembersByProject(allMembers)}
+              versionCounts={countVersionsByProject(allVersions)}
+              onSelect={(id) => router.push(`/projects/${id}/dashboard`)}
+              onNewProject={() => router.push("/projects")}
+            />
           </DropdownMenu>
         </Dropdown>
       </div>
@@ -232,7 +279,38 @@ export function Sidebar({ projectId }: { projectId: string }) {
           Profile
         </SidebarLink>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop */}
+      <aside className="hidden md:flex md:w-60 md:flex-col border-r border-white/40 bg-white/40 backdrop-blur-xl dark:border-stone-800/60 dark:bg-stone-950/40 sticky top-0 h-screen">
+        {content}
+      </aside>
+
+      {/* Mobile drawer */}
+      <div
+        className={cn(
+          "md:hidden fixed inset-0 z-50 transition-opacity duration-200",
+          mobileOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none",
+        )}
+      >
+        <div
+          aria-hidden
+          className="absolute inset-0 bg-stone-900/40 backdrop-blur-sm"
+          onClick={onMobileClose}
+        />
+        <aside
+          className={cn(
+            "absolute left-0 top-0 flex h-full w-72 max-w-[85vw] flex-col bg-white/90 backdrop-blur-xl shadow-2xl transition-transform duration-200 dark:bg-stone-950/95",
+            mobileOpen ? "translate-x-0" : "-translate-x-full",
+          )}
+        >
+          {content}
+        </aside>
+      </div>
+    </>
   );
 }
 
@@ -275,6 +353,121 @@ function SidebarLink({
       <span className="flex-1 truncate font-medium">{children}</span>
       {badge && <SidebarBadge value={badge.value} tone={badge.tone} />}
     </Link>
+  );
+}
+
+function capBadge(n: number): string {
+  return n > 9 ? "9+" : String(n);
+}
+
+function countMembersByProject(members: Member[]): Record<string, number> {
+  return members.reduce<Record<string, number>>((acc, m) => {
+    acc[m.projectId] = (acc[m.projectId] ?? 0) + 1;
+    return acc;
+  }, {});
+}
+
+function countVersionsByProject(
+  versions: ApiVersion[],
+): Record<string, number> {
+  return versions.reduce<Record<string, number>>((acc, v) => {
+    acc[v.projectId] = (acc[v.projectId] ?? 0) + 1;
+    return acc;
+  }, {});
+}
+
+function truncate(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return text.slice(0, max - 1).trimEnd() + "…";
+}
+
+function ProjectSwitcherMenu({
+  projects,
+  activeId,
+  recentIds,
+  memberCounts,
+  versionCounts,
+  onSelect,
+  onNewProject,
+}: {
+  projects: Project[];
+  activeId: string;
+  recentIds: string[];
+  memberCounts: Record<string, number>;
+  versionCounts: Record<string, number>;
+  onSelect: (id: string) => void;
+  onNewProject: () => void;
+}) {
+  const current = projects.find((p) => p.id === activeId);
+  const recents = recentIds
+    .filter((id) => id !== activeId)
+    .map((id) => projects.find((p) => p.id === id))
+    .filter((p): p is Project => !!p)
+    .slice(0, 2);
+  const recentSet = new Set(recents.map((p) => p.id));
+  const others = projects.filter(
+    (p) => p.id !== activeId && !recentSet.has(p.id),
+  );
+
+  return (
+    <>
+      <DropdownLabel>Current project</DropdownLabel>
+      {current && (
+        <DropdownItem onSelect={() => onSelect(current.id)}>
+          <span className="flex-1 min-w-0">
+            <span className="block truncate font-medium text-stone-900 dark:text-stone-100">
+              {current.name}
+            </span>
+            <span className="block text-[11px] text-stone-500">
+              {memberCounts[current.id] ?? 0} member
+              {memberCounts[current.id] === 1 ? "" : "s"} ·{" "}
+              {versionCounts[current.id] ?? 0} version
+              {versionCounts[current.id] === 1 ? "" : "s"}
+            </span>
+          </span>
+          <Check className="h-3.5 w-3.5 shrink-0 text-orange-500" />
+        </DropdownItem>
+      )}
+
+      {recents.length > 0 && (
+        <>
+          <DropdownSeparator />
+          <DropdownLabel>Recent</DropdownLabel>
+          {recents.map((p) => (
+            <DropdownItem key={p.id} onSelect={() => onSelect(p.id)}>
+              <span className="flex-1 min-w-0">
+                <span className="block truncate font-medium">{p.name}</span>
+                {p.description && (
+                  <span className="block text-[11px] text-stone-500">
+                    {truncate(p.description, 40)}
+                  </span>
+                )}
+              </span>
+            </DropdownItem>
+          ))}
+        </>
+      )}
+
+      {others.length > 0 && (
+        <>
+          <DropdownSeparator />
+          <DropdownLabel>All projects</DropdownLabel>
+          <div className="max-h-60 overflow-y-auto">
+            {others.map((p) => (
+              <DropdownItem key={p.id} onSelect={() => onSelect(p.id)}>
+                <span className="flex-1 truncate">{p.name}</span>
+              </DropdownItem>
+            ))}
+          </div>
+        </>
+      )}
+
+      <DropdownSeparator />
+      <DropdownItem onSelect={onNewProject}>
+        <Plus className="h-3.5 w-3.5" />
+        New project
+      </DropdownItem>
+    </>
   );
 }
 

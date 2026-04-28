@@ -5,7 +5,7 @@ export type VersionStatus = "draft" | "pending" | "approved" | "rejected";
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 export type ChangeType = "breaking" | "non-breaking";
-export type NotificationType = "approval" | "comment" | "rejection";
+export type NotificationType = "approval" | "comment" | "rejection" | "mention";
 export type ImpactLevel = "high" | "medium" | "low";
 
 export type DiffSubType =

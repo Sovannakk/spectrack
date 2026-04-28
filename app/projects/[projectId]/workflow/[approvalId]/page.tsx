@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useParams } from "next/navigation";
-import { Check, MessageSquare, X } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, MessageSquare, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/store";
 import { usePageLoader } from "@/components/page-loader";
@@ -19,6 +19,8 @@ import { ChangeTypeBadge } from "@/components/change-type-badge";
 import { CommentThread } from "@/components/comment-thread";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/page-header";
+import { ApprovalTimeline } from "@/components/approval-timeline";
+import { RelativeTime } from "@/components/relative-time";
 import {
   ApproveModal,
   RejectModal,
@@ -38,6 +40,11 @@ export default function ApprovalDetailPage() {
   const allComments = useAppStore((s) => s.comments);
   const allEndpoints = useAppStore((s) => s.endpoints);
   const allVersions = useAppStore((s) => s.versions);
+  const allMembers = useAppStore((s) => s.members);
+  const members = React.useMemo(
+    () => allMembers.filter((m) => m.projectId === projectId),
+    [allMembers, projectId],
+  );
 
   const approval = React.useMemo(
     () =>
@@ -96,6 +103,10 @@ export default function ApprovalDetailPage() {
   }
 
   const isPending = approval.status === "pending";
+  const breakingCount = diffs.filter((d) => d.changeType === "breaking").length;
+  const safeToApprove =
+    role === "reviewer" && isPending && breakingCount === 0 && diffs.length > 0;
+  const hasBreakingWarning = isPending && breakingCount > 0;
 
   const handleAddComment = (input: {
     endpoint: string;
@@ -114,7 +125,12 @@ export default function ApprovalDetailPage() {
     <div className="space-y-8">
       <PageHeader
         title={`${approval.fromVersion} → ${approval.toVersion}`}
-        description={`Submitted by ${approval.submittedBy} on ${formatDate(approval.submittedAt)}`}
+        description={
+          <>
+            Submitted by {approval.submittedBy}{" "}
+            <RelativeTime timestamp={approval.submittedAt} />
+          </>
+        }
         meta={<StatusBadge status={approval.status} />}
         actions={
           role === "reviewer" && isPending ? (
@@ -130,12 +146,39 @@ export default function ApprovalDetailPage() {
         }
       />
 
-      {approval.reviewerComment && (
-        <div className="rounded-md border border-stone-200/70 bg-stone-50 px-4 py-3 text-sm text-stone-700 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-200">
-          <span className="font-medium">Reviewer note:</span>{" "}
-          {approval.reviewerComment}
+      {/* UX-WF-03 — Safe-to-approve fast lane / breaking warning */}
+      {safeToApprove && (
+        <div className="flex flex-wrap items-center gap-3 rounded-md border border-emerald-300/80 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-100">
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-300" />
+          <span className="flex-1">
+            No breaking changes detected — this submission looks safe to approve.
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setApproveOpen(true)}
+          >
+            <Check className="h-3.5 w-3.5" /> Approve now
+          </Button>
         </div>
       )}
+      {hasBreakingWarning && (
+        <div className="flex items-start gap-3 rounded-md border border-amber-300/80 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-300" />
+          <span>
+            <strong>{breakingCount}</strong> breaking{" "}
+            {breakingCount === 1 ? "change" : "changes"} detected — review
+            carefully before approving.
+          </span>
+        </div>
+      )}
+
+      {/* UX-WF-01 — Approval timeline */}
+      <Card>
+        <CardContent className="py-5">
+          <ApprovalTimeline approval={approval} members={members} />
+        </CardContent>
+      </Card>
 
       {/* WORK-01 — Diff with per-endpoint comment threads */}
       <Card>
@@ -210,6 +253,7 @@ export default function ApprovalDetailPage() {
                         endpoint={d.endpoint}
                         endpointId={endpointId}
                         hideEndpointLabel
+                        members={members}
                         onSubmit={handleAddComment}
                       />
                     </div>
@@ -228,6 +272,7 @@ export default function ApprovalDetailPage() {
         <CardContent>
           <CommentThread
             comments={comments.filter((c) => !c.endpointId)}
+            members={members}
             onSubmit={handleAddComment}
           />
         </CardContent>

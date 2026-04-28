@@ -13,7 +13,9 @@ import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EndpointDoc } from "@/components/endpoint-doc";
+import { MethodFilter } from "@/components/method-filter";
 import { EmptyState } from "@/components/ui/empty-state";
+import type { HttpMethod } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { downloadApiFile } from "@/lib/download";
@@ -56,12 +58,18 @@ export default function DocsPage() {
   );
 
   const [search, setSearch] = React.useState("");
-  const filtered = endpoints.filter(
-    (e) =>
+  const [methodFilter, setMethodFilter] = React.useState<HttpMethod | "ALL">(
+    "ALL",
+  );
+  const filtered = endpoints.filter((e) => {
+    const matchesSearch =
       e.path.toLowerCase().includes(search.toLowerCase()) ||
       e.summary.toLowerCase().includes(search.toLowerCase()) ||
-      e.method.toLowerCase().includes(search.toLowerCase()),
-  );
+      e.method.toLowerCase().includes(search.toLowerCase());
+    const matchesMethod =
+      methodFilter === "ALL" ? true : e.method === methodFilter;
+    return matchesSearch && matchesMethod;
+  });
 
   const handleDownload = () => {
     if (!version) return;
@@ -142,14 +150,21 @@ export default function DocsPage() {
             />
           </div>
         </CardHeader>
-        <CardContent className="space-y-2">
-          {filtered.length === 0 ? (
-            <p className="py-8 text-center text-sm text-stone-500">
-              No endpoints match your search.
-            </p>
-          ) : (
-            filtered.map((e) => <EndpointDoc key={e.id} endpoint={e} />)
-          )}
+        <CardContent className="space-y-3">
+          <MethodFilter
+            endpoints={endpoints}
+            activeMethod={methodFilter}
+            onChange={setMethodFilter}
+          />
+          <div className="space-y-2">
+            {filtered.length === 0 ? (
+              <p className="py-8 text-center text-sm text-stone-500">
+                No endpoints match your filter.
+              </p>
+            ) : (
+              filtered.map((e) => <EndpointDoc key={e.id} endpoint={e} />)
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>

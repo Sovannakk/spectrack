@@ -3,16 +3,17 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ClipboardList, Eye, Upload } from "lucide-react";
+import { ClipboardList, Eye, Plus, Upload } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { usePageLoader } from "@/components/page-loader";
-import { Skeleton } from "@/components/ui/skeleton";
+import { TableSkeleton } from "@/components/loading-skeletons";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusBadge } from "@/components/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
-import { cn, formatDate } from "@/lib/utils";
+import { RelativeTime } from "@/components/relative-time";
+import { cn } from "@/lib/utils";
 
 export default function WorkflowPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -33,7 +34,7 @@ export default function WorkflowPage() {
     [approvals, role, me.name],
   );
 
-  if (loading) return <Skeleton className="h-64" />;
+  if (loading) return <TableSkeleton />;
 
   return (
     <div className="space-y-8">
@@ -45,12 +46,24 @@ export default function WorkflowPage() {
       {visible.length === 0 ? (
         <EmptyState
           icon={<ClipboardList className="h-5 w-5" />}
-          title="No submissions yet"
-          description={
-            role === "contributor"
-              ? "You haven't submitted any versions for review."
-              : "When contributors submit versions, they'll show up here."
+          title={
+            role === "reviewer"
+              ? "No submissions to review yet"
+              : "No submissions yet"
           }
+          description={
+            role === "reviewer"
+              ? "When contributors submit versions, they'll show up here."
+              : "Upload an API and submit it for review to start the workflow."
+          }
+          actions={[
+            {
+              label: "Upload an API",
+              href: `/projects/${projectId}/api-management/upload`,
+              roles: ["owner", "contributor"],
+              icon: <Plus className="h-4 w-4" />,
+            },
+          ]}
         />
       ) : (
         <Table>
@@ -72,7 +85,9 @@ export default function WorkflowPage() {
                   </span>
                 </TD>
                 <TD>{a.submittedBy}</TD>
-                <TD>{formatDate(a.submittedAt)}</TD>
+                <TD>
+                  <RelativeTime timestamp={a.submittedAt} />
+                </TD>
                 <TD>
                   <StatusBadge status={a.status} />
                 </TD>

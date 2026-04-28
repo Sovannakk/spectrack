@@ -1,5 +1,5 @@
 import { Avatar } from "@/components/ui/avatar";
-import { timeAgo } from "@/lib/utils";
+import { RelativeTime } from "@/components/relative-time";
 import type { Activity } from "@/lib/types";
 
 export function ActivityItem({ activity }: { activity: Activity }) {
@@ -16,9 +16,10 @@ export function ActivityItem({ activity }: { activity: Activity }) {
             {activity.target}
           </span>
         </p>
-        <p className="mt-0.5 text-xs text-stone-500 dark:text-stone-400">
-          {timeAgo(activity.timestamp)}
-        </p>
+        <RelativeTime
+          timestamp={activity.timestamp}
+          className="mt-0.5 block text-xs text-stone-500 dark:text-stone-400"
+        />
       </div>
     </div>
   );

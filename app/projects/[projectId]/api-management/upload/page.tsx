@@ -7,6 +7,8 @@ import {
   CheckCircle2,
   ChevronDown,
   Copy,
+  FileQuestion,
+  FileSearch,
   Globe2,
   Loader2,
   Upload as UploadIcon,
@@ -28,7 +30,7 @@ import {
 import { TagInput } from "@/components/tag-input";
 import { MethodBadge } from "@/components/method-badge";
 import { PageHeader } from "@/components/page-header";
-import { cn } from "@/lib/utils";
+import type { Endpoint } from "@/lib/types";
 
 const versionSchema = z.string().min(1, "Version name is required");
 const urlSchema = z
@@ -37,8 +39,6 @@ const urlSchema = z
   .regex(/^https?:\/\//i, "Must start with http:// or https://");
 
 type ValidationStatus = "idle" | "checking" | "valid" | "invalid";
-
-type CollapsibleKey = "endpoints" | "params" | "schemas";
 
 const PREVIEW_PARAMS = [
   { name: "page", in: "query", type: "integer", required: false },
@@ -88,19 +88,10 @@ export default function UploadPage() {
     {},
   );
 
-  // APIM-01 — validation state
   const [valStatus, setValStatus] = React.useState<ValidationStatus>("idle");
   const [valError, setValError] = React.useState<string | null>(null);
   const [extension, setExtension] = React.useState<string>("");
 
-  // APIM-02 — collapsibles
-  const [open, setOpen] = React.useState<Record<CollapsibleKey, boolean>>({
-    endpoints: false,
-    params: false,
-    schemas: false,
-  });
-
-  // ADD-02 — uploaded fileUrl after success
   const [createdUrl, setCreatedUrl] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -108,7 +99,6 @@ export default function UploadPage() {
     if (role === "reviewer") router.replace(`/projects/${projectId}/dashboard`);
   }, [loading, role, projectId, router]);
 
-  // Run fake validation when file/url changes
   React.useEffect(() => {
     setValError(null);
     setExtension("");
@@ -156,6 +146,7 @@ export default function UploadPage() {
   if (createdUrl) return <SuccessView url={createdUrl} />;
 
   const isValid = valStatus === "valid";
+  const canSubmit = isValid && versionName.trim().length > 0;
 
   const submit = () => {
     const next: typeof errs = {};
@@ -193,191 +184,261 @@ export default function UploadPage() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
+    <div className="mx-auto max-w-6xl space-y-8">
       <PageHeader
         title="Upload API specification"
         description="Upload an OpenAPI file or import from a URL to create a new version."
+        actions={
+          <>
+            <Button variant="outline" onClick={() => router.back()}>
+              Cancel
+            </Button>
+            <Button onClick={submit} disabled={!canSubmit}>
+              <UploadIcon className="h-4 w-4" /> Create version
+            </Button>
+          </>
+        }
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Source</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Tabs value={tab} onValueChange={(v) => setTab(v as "file" | "url")}>
-            <TabsList>
-              <TabsTrigger value="file">
-                <UploadIcon className="h-3.5 w-3.5" /> File upload
-              </TabsTrigger>
-              <TabsTrigger value="url">
-                <Globe2 className="h-3.5 w-3.5" /> URL
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="file">
-              <FileDropzone
-                value={file}
-                onChange={(f) => {
-                  setFile(f);
-                  setErrs((e) => ({ ...e, source: undefined }));
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Left column: source + extracted preview */}
+        <div className="space-y-6 lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>1. Source</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Tabs
+                value={tab}
+                onValueChange={(v) => setTab(v as "file" | "url")}
+              >
+                <TabsList>
+                  <TabsTrigger value="file">
+                    <UploadIcon className="h-3.5 w-3.5" /> File upload
+                  </TabsTrigger>
+                  <TabsTrigger value="url">
+                    <Globe2 className="h-3.5 w-3.5" /> URL
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="file">
+                  <FileDropzone
+                    value={file}
+                    onChange={(f) => {
+                      setFile(f);
+                      setErrs((e) => ({ ...e, source: undefined }));
+                    }}
+                    onError={(msg) => toast.error(msg)}
+                  />
+                </TabsContent>
+                <TabsContent value="url">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="url">API spec URL</Label>
+                    <Input
+                      id="url"
+                      placeholder="https://example.com/openapi.json"
+                      value={url}
+                      onChange={(e) => {
+                        setUrl(e.target.value);
+                        setErrs((er) => ({ ...er, source: undefined }));
+                      }}
+                    />
+                  </div>
+                </TabsContent>
+              </Tabs>
+              {errs.source && (
+                <p className="mt-2 text-xs text-red-500">{errs.source}</p>
+              )}
+
+              <ValidationPanel
+                status={valStatus}
+                error={valError}
+                extension={extension}
+                onReset={() => {
+                  setFile(null);
+                  setUrl("");
                 }}
-                onError={(msg) => toast.error(msg)}
               />
-            </TabsContent>
-            <TabsContent value="url">
+
+              <FormatGuide />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>2. Extracted preview</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isValid ? (
+                <ExtractedPreview
+                  endpoints={initialEndpoints}
+                  params={PREVIEW_PARAMS}
+                  schemas={PREVIEW_SCHEMAS}
+                />
+              ) : (
+                <PreviewEmptyState />
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right column: version metadata */}
+        <div className="lg:col-span-1">
+          <Card>
+            <CardHeader>
+              <CardTitle>3. Version metadata</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div className="space-y-1.5">
-                <Label htmlFor="url">API spec URL</Label>
+                <Label htmlFor="version">Version name</Label>
                 <Input
-                  id="url"
-                  placeholder="https://example.com/openapi.json"
-                  value={url}
+                  id="version"
+                  placeholder="v3"
+                  value={versionName}
                   onChange={(e) => {
-                    setUrl(e.target.value);
-                    setErrs((er) => ({ ...er, source: undefined }));
+                    setVersionName(e.target.value);
+                    setErrs((er) => ({ ...er, version: undefined }));
                   }}
                 />
+                {errs.version && (
+                  <p className="text-xs text-red-500">{errs.version}</p>
+                )}
               </div>
-            </TabsContent>
-          </Tabs>
-          {errs.source && (
-            <p className="mt-2 text-xs text-red-500">{errs.source}</p>
-          )}
-
-          <ValidationPanel
-            status={valStatus}
-            error={valError}
-            extension={extension}
-            onReset={() => {
-              setFile(null);
-              setUrl("");
-            }}
-          />
-        </CardContent>
-      </Card>
-
-      {/* APIM-02 — Extracted preview with collapsibles */}
-      {isValid && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Extracted preview</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <CollapsibleSection
-              label={`Endpoints (${initialEndpoints.length})`}
-              open={open.endpoints}
-              onToggle={() =>
-                setOpen((o) => ({ ...o, endpoints: !o.endpoints }))
-              }
-            >
-              <ul className="divide-y divide-stone-100 dark:divide-stone-800">
-                {initialEndpoints.map((e) => (
-                  <li key={e.id} className="flex items-center gap-3 py-2">
-                    <MethodBadge method={e.method} />
-                    <span className="font-mono text-sm">{e.path}</span>
-                    <span className="ml-auto text-xs text-stone-500">
-                      {e.summary}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </CollapsibleSection>
-
-            <CollapsibleSection
-              label={`Parameters (${PREVIEW_PARAMS.length})`}
-              open={open.params}
-              onToggle={() => setOpen((o) => ({ ...o, params: !o.params }))}
-            >
-              <div className="overflow-x-auto rounded-md border border-stone-200/70 dark:border-stone-800/70">
-                <table className="w-full text-sm">
-                  <thead className="bg-stone-50/60 text-[11px] uppercase tracking-wide text-stone-500 dark:bg-stone-900/40">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-medium">Name</th>
-                      <th className="px-3 py-2 text-left font-medium">In</th>
-                      <th className="px-3 py-2 text-left font-medium">Type</th>
-                      <th className="px-3 py-2 text-left font-medium">
-                        Required
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {PREVIEW_PARAMS.map((p) => (
-                      <tr
-                        key={p.name + p.in}
-                        className="border-t border-stone-100 dark:border-stone-800/60"
-                      >
-                        <td className="px-3 py-2 font-mono text-xs">
-                          {p.name}
-                        </td>
-                        <td className="px-3 py-2 text-xs">
-                          <Badge variant="gray">{p.in}</Badge>
-                        </td>
-                        <td className="px-3 py-2 font-mono text-xs">
-                          {p.type}
-                        </td>
-                        <td className="px-3 py-2 text-xs">
-                          {p.required ? "Yes" : "No"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="space-y-1.5">
+                <Label>Tags</Label>
+                <TagInput
+                  value={tags}
+                  onChange={setTags}
+                  placeholder="Press Enter to add (e.g. beta-release)"
+                />
               </div>
-            </CollapsibleSection>
-
-            <CollapsibleSection
-              label={`Schemas (${PREVIEW_SCHEMAS.length})`}
-              open={open.schemas}
-              onToggle={() => setOpen((o) => ({ ...o, schemas: !o.schemas }))}
-            >
-              <div className="space-y-2">
-                {PREVIEW_SCHEMAS.map((s) => (
-                  <SchemaItem key={s.name} schema={s} />
-                ))}
+              <div className="border-t border-stone-200/60 pt-4 dark:border-stone-800/60">
+                <Button
+                  className="w-full"
+                  onClick={submit}
+                  disabled={!canSubmit}
+                >
+                  <UploadIcon className="h-4 w-4" /> Create version
+                </Button>
+                {!canSubmit && (
+                  <p className="mt-2 text-center text-xs text-stone-500">
+                    {!isValid
+                      ? "Provide a valid file or URL first"
+                      : "Enter a version name to continue"}
+                  </p>
+                )}
               </div>
-            </CollapsibleSection>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Version metadata</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="version">Version name</Label>
-            <Input
-              id="version"
-              placeholder="v3"
-              value={versionName}
-              onChange={(e) => {
-                setVersionName(e.target.value);
-                setErrs((er) => ({ ...er, version: undefined }));
-              }}
-            />
-            {errs.version && (
-              <p className="text-xs text-red-500">{errs.version}</p>
-            )}
-          </div>
-          <div className="space-y-1.5">
-            <Label>Tags</Label>
-            <TagInput
-              value={tags}
-              onChange={setTags}
-              placeholder="Press Enter to add (e.g. beta-release)"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={() => router.back()}>
-          Cancel
-        </Button>
-        <Button onClick={submit} disabled={!isValid || !versionName}>
-          <UploadIcon className="h-4 w-4" /> Create version
-        </Button>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
+  );
+}
+
+function PreviewEmptyState() {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed border-stone-200/80 bg-stone-50/40 px-6 py-10 text-center dark:border-stone-800/70 dark:bg-stone-900/20">
+      <FileSearch className="h-6 w-6 text-stone-400" />
+      <div className="text-sm font-medium text-stone-700 dark:text-stone-200">
+        Nothing to preview yet
+      </div>
+      <p className="max-w-sm text-xs text-stone-500">
+        Upload a file or paste a URL above. Once it validates, we&apos;ll show
+        the extracted endpoints, parameters, and schemas here.
+      </p>
+    </div>
+  );
+}
+
+function ExtractedPreview({
+  endpoints,
+  params,
+  schemas,
+}: {
+  endpoints: Endpoint[];
+  params: typeof PREVIEW_PARAMS;
+  schemas: typeof PREVIEW_SCHEMAS;
+}) {
+  return (
+    <Tabs defaultValue="endpoints">
+      <TabsList>
+        <TabsTrigger value="endpoints">
+          Endpoints
+          <Badge variant="gray" className="ml-1">
+            {endpoints.length}
+          </Badge>
+        </TabsTrigger>
+        <TabsTrigger value="params">
+          Parameters
+          <Badge variant="gray" className="ml-1">
+            {params.length}
+          </Badge>
+        </TabsTrigger>
+        <TabsTrigger value="schemas">
+          Schemas
+          <Badge variant="gray" className="ml-1">
+            {schemas.length}
+          </Badge>
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="endpoints">
+        <ul className="divide-y divide-stone-100 rounded-md border border-stone-200/70 dark:divide-stone-800/60 dark:border-stone-800/70">
+          {endpoints.map((e) => (
+            <li
+              key={e.id}
+              className="flex items-center gap-3 px-3 py-2"
+            >
+              <MethodBadge method={e.method} />
+              <span className="font-mono text-sm">{e.path}</span>
+              <span className="ml-auto truncate text-xs text-stone-500">
+                {e.summary}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </TabsContent>
+
+      <TabsContent value="params">
+        <div className="overflow-x-auto rounded-md border border-stone-200/70 dark:border-stone-800/70">
+          <table className="w-full text-sm">
+            <thead className="bg-stone-50/60 text-[11px] uppercase tracking-wide text-stone-500 dark:bg-stone-900/40">
+              <tr>
+                <th className="px-3 py-2 text-left font-medium">Name</th>
+                <th className="px-3 py-2 text-left font-medium">In</th>
+                <th className="px-3 py-2 text-left font-medium">Type</th>
+                <th className="px-3 py-2 text-left font-medium">Required</th>
+              </tr>
+            </thead>
+            <tbody>
+              {params.map((p) => (
+                <tr
+                  key={p.name + p.in}
+                  className="border-t border-stone-100 dark:border-stone-800/60"
+                >
+                  <td className="px-3 py-2 font-mono text-xs">{p.name}</td>
+                  <td className="px-3 py-2 text-xs">
+                    <Badge variant="gray">{p.in}</Badge>
+                  </td>
+                  <td className="px-3 py-2 font-mono text-xs">{p.type}</td>
+                  <td className="px-3 py-2 text-xs">
+                    {p.required ? "Yes" : "No"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </TabsContent>
+
+      <TabsContent value="schemas">
+        <div className="space-y-2">
+          {schemas.map((s) => (
+            <SchemaItem key={s.name} schema={s} />
+          ))}
+        </div>
+      </TabsContent>
+    </Tabs>
   );
 }
 
@@ -440,41 +501,6 @@ function ValidationPanel({
   );
 }
 
-function CollapsibleSection({
-  label,
-  open,
-  onToggle,
-  children,
-}: {
-  label: string;
-  open: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-md border border-stone-200/70 dark:border-stone-800/70">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium"
-      >
-        <span>{label}</span>
-        <ChevronDown
-          className={cn(
-            "h-3.5 w-3.5 text-stone-400 transition-transform",
-            open ? "rotate-180" : "",
-          )}
-        />
-      </button>
-      {open && (
-        <div className="border-t border-stone-200/70 px-3 py-3 dark:border-stone-800/70">
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function SchemaItem({
   schema,
 }: {
@@ -490,10 +516,9 @@ function SchemaItem({
       >
         <span className="font-mono font-medium">{schema.name}</span>
         <ChevronDown
-          className={cn(
-            "h-3.5 w-3.5 text-stone-400 transition-transform",
-            open ? "rotate-180" : "",
-          )}
+          className={`h-3.5 w-3.5 text-stone-400 transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
         />
       </button>
       {open && (
@@ -516,10 +541,102 @@ function SchemaItem({
   );
 }
 
+const YAML_EXAMPLE = `openapi: "3.0.0"
+info:
+  title: Payment API
+  version: "1.0.0"
+paths:
+  /payments:
+    get:
+      summary: List payments
+      responses:
+        "200":
+          description: Success`;
+
+const JSON_EXAMPLE = `{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Payment API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/payments": {
+      "get": {
+        "summary": "List payments",
+        "responses": {
+          "200": { "description": "Success" }
+        }
+      }
+    }
+  }
+}`;
+
+function FormatGuide() {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div className="mt-4 rounded-md border border-stone-200/70 dark:border-stone-800/70">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 px-3 py-2 text-sm text-stone-700 hover:bg-stone-50/60 dark:text-stone-200 dark:hover:bg-stone-900/40"
+      >
+        <FileQuestion className="h-3.5 w-3.5 text-stone-400" />
+        <span className="font-medium">What format is accepted?</span>
+        <ChevronDown
+          className={`ml-auto h-3.5 w-3.5 text-stone-400 transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+      {open && (
+        <div className="border-t border-stone-200/70 px-3 py-3 dark:border-stone-800/70">
+          <Tabs defaultValue="yaml">
+            <TabsList>
+              <TabsTrigger value="yaml">YAML example</TabsTrigger>
+              <TabsTrigger value="json">JSON example</TabsTrigger>
+            </TabsList>
+            <TabsContent value="yaml">
+              <CodeBlock content={YAML_EXAMPLE} />
+            </TabsContent>
+            <TabsContent value="json">
+              <CodeBlock content={JSON_EXAMPLE} />
+            </TabsContent>
+          </Tabs>
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+            <a
+              href="#"
+              className="text-orange-600 hover:underline dark:text-orange-300"
+              onClick={(e) => e.preventDefault()}
+            >
+              Learn more about OpenAPI 3.0 →
+            </a>
+            <a
+              href="#"
+              className="text-orange-600 hover:underline dark:text-orange-300"
+              onClick={(e) => e.preventDefault()}
+            >
+              Convert Swagger 2.0 to OpenAPI 3.0 →
+            </a>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CodeBlock({ content }: { content: string }) {
+  return (
+    <pre className="overflow-x-auto rounded-md border border-stone-200/60 bg-stone-50/70 p-3 font-mono text-[12px] leading-relaxed text-stone-800 dark:border-stone-800/60 dark:bg-stone-900/50 dark:text-stone-200">
+      <code>{content}</code>
+    </pre>
+  );
+}
+
 function SuccessView({ url }: { url: string }) {
   const { projectId } = useParams<{ projectId: string }>();
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader
         title="Version created"
         description="Your specification was uploaded and a new version was created."

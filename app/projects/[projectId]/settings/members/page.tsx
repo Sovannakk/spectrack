@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/store";
+import { undoableToast } from "@/lib/use-undoable-action";
 import { usePageLoader } from "@/components/page-loader";
 import { OwnerGuard } from "@/components/owner-guard";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,6 +24,8 @@ import { Input, Label } from "@/components/ui/input";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { RoleBadge } from "@/components/role-badge";
 import { PageHeader } from "@/components/page-header";
+import { Tooltip } from "@/components/ui/tooltip";
+import { RelativeTime } from "@/components/relative-time";
 import { fireAlerts } from "@/lib/alerts";
 import { z } from "zod";
 import type { Role } from "@/lib/types";
@@ -52,6 +55,7 @@ function Inner() {
   const inviteMember = useAppStore((s) => s.inviteMember);
   const updateMemberRole = useAppStore((s) => s.updateMemberRole);
   const removeMember = useAppStore((s) => s.removeMember);
+  const restoreMember = useAppStore((s) => s.restoreMember);
 
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const [email, setEmail] = React.useState("");
@@ -131,17 +135,21 @@ function Inner() {
                     />
                   )}
                 </TD>
-                <TD>{new Date(m.joinedAt).toLocaleDateString()}</TD>
+                <TD>
+                  <RelativeTime timestamp={m.joinedAt} />
+                </TD>
                 <TD className="text-right">
                   {!isMe && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setRemoveId(m.id)}
-                      title="Remove"
-                    >
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                    </Button>
+                    <Tooltip label="Remove member" side="left">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Remove member"
+                        onClick={() => setRemoveId(m.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                      </Button>
+                    </Tooltip>
                   )}
                 </TD>
               </TR>
@@ -229,9 +237,13 @@ function Inner() {
         confirmLabel="Remove"
         destructive
         onConfirm={() => {
-          if (!removeId) return;
+          if (!removeId || !removeTarget) return;
+          const snapshot = removeTarget;
           removeMember(removeId);
-          toast.success("Member removed");
+          undoableToast({
+            message: `${snapshot.name} removed`,
+            onUndo: () => restoreMember(snapshot),
+          });
         }}
       />
     </div>

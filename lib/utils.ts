@@ -34,17 +34,57 @@ export function formatDateTime(input: string | Date): string {
   });
 }
 
+/**
+ * UX-QW-06 — verbose relative time formatter matching the spec bands:
+ *   < 60s        → "just now"
+ *   < 60m        → "X minutes ago"
+ *   < 24h        → "X hours ago"
+ *   < 7d         → "X days ago"
+ *   < 30d        → "X weeks ago"
+ *   < 12 months  → "X months ago"
+ *   ≥ 12 months  → "X years ago"
+ */
 export function timeAgo(input: string | Date): string {
   const d = typeof input === "string" ? new Date(input) : input;
   if (Number.isNaN(d.getTime())) return String(input);
-  const now = Date.now();
-  const diffSec = Math.round((now - d.getTime()) / 1000);
+  const diffSec = Math.round((Date.now() - d.getTime()) / 1000);
   const abs = Math.abs(diffSec);
   if (abs < 60) return "just now";
-  if (abs < 3600) return `${Math.round(abs / 60)}m ago`;
-  if (abs < 86400) return `${Math.round(abs / 3600)}h ago`;
-  if (abs < 86400 * 30) return `${Math.round(abs / 86400)}d ago`;
-  return formatDate(d);
+  if (abs < 3600) {
+    const m = Math.round(abs / 60);
+    return `${m} minute${m === 1 ? "" : "s"} ago`;
+  }
+  if (abs < 86400) {
+    const h = Math.round(abs / 3600);
+    return `${h} hour${h === 1 ? "" : "s"} ago`;
+  }
+  if (abs < 86400 * 7) {
+    const days = Math.round(abs / 86400);
+    return `${days} day${days === 1 ? "" : "s"} ago`;
+  }
+  if (abs < 86400 * 30) {
+    const weeks = Math.round(abs / (86400 * 7));
+    return `${weeks} week${weeks === 1 ? "" : "s"} ago`;
+  }
+  if (abs < 86400 * 365) {
+    const months = Math.round(abs / (86400 * 30));
+    return `${months} month${months === 1 ? "" : "s"} ago`;
+  }
+  const years = Math.round(abs / (86400 * 365));
+  return `${years} year${years === 1 ? "" : "s"} ago`;
+}
+
+/** Locale-aware absolute timestamp suitable for tooltips. */
+export function formatAbsolute(input: string | Date): string {
+  const d = typeof input === "string" ? new Date(input) : input;
+  if (Number.isNaN(d.getTime())) return String(input);
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(d);
 }
 
 export function nowIso(): string {

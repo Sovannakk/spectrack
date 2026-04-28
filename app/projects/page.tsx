@@ -25,7 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Skeleton } from "@/components/ui/skeleton";
+import { CardListSkeleton } from "@/components/loading-skeletons";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { useAppStore } from "@/lib/store";
@@ -76,11 +76,7 @@ export default function ProjectsPage() {
         />
 
         {loading ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-44" />
-            ))}
-          </div>
+          <CardListSkeleton />
         ) : projects.length === 0 ? (
           <EmptyState
             icon={<FolderKanban className="h-5 w-5" />}

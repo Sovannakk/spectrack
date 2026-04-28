@@ -6,9 +6,10 @@ import { useParams } from "next/navigation";
 import { Copy, Download, FileCode, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/store";
+import { undoableToast } from "@/lib/use-undoable-action";
 import { usePageLoader } from "@/components/page-loader";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { TableSkeleton } from "@/components/loading-skeletons";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,7 @@ import {
 } from "@/components/file-dropzone";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { PageHeader } from "@/components/page-header";
+import { Tooltip } from "@/components/ui/tooltip";
 import { downloadApiFile } from "@/lib/download";
 import { cn, formatDate } from "@/lib/utils";
 import type { ApiFile } from "@/lib/types";
@@ -42,6 +44,7 @@ export default function ApiFilesPage() {
     [allApiFiles, projectId],
   );
   const deleteApiFile = useAppStore((s) => s.deleteApiFile);
+  const restoreApiFile = useAppStore((s) => s.restoreApiFile);
   const updateApiFile = useAppStore((s) => s.updateApiFile);
 
   const [confirmId, setConfirmId] = React.useState<string | null>(null);
@@ -85,22 +88,25 @@ export default function ApiFilesPage() {
       />
 
       {loading ? (
-        <Skeleton className="h-64" />
+        <TableSkeleton />
       ) : apiFiles.length === 0 ? (
         <EmptyState
           icon={<FileCode className="h-5 w-5" />}
           title="No API files yet"
           description="Upload your first OpenAPI/JSON spec to get started."
-          action={
-            canMutate ? (
-              <Link
-                href={`/projects/${projectId}/api-management/upload`}
-                className={cn(buttonVariants())}
-              >
-                <Plus className="h-4 w-4" /> Upload API
-              </Link>
-            ) : undefined
-          }
+          actions={[
+            {
+              label: "Upload API",
+              href: `/projects/${projectId}/api-management/upload`,
+              roles: ["owner", "contributor"],
+              icon: <Plus className="h-4 w-4" />,
+            },
+            {
+              label: "Ask a contributor to upload",
+              roles: ["reviewer"],
+              variant: "muted",
+            },
+          ]}
         />
       ) : (
         <Table>
@@ -131,40 +137,48 @@ export default function ApiFilesPage() {
                 <TD>{formatDate(f.uploadedAt)}</TD>
                 <TD className="text-right">
                   <div className="flex items-center justify-end gap-0.5">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      title="Copy link"
-                      onClick={() => handleCopy(f)}
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      title="Download"
-                      onClick={() => handleDownload(f)}
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                    </Button>
+                    <Tooltip label="Copy link">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Copy link"
+                        onClick={() => handleCopy(f)}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                    </Tooltip>
+                    <Tooltip label="Download">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Download"
+                        onClick={() => handleDownload(f)}
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                      </Button>
+                    </Tooltip>
                     {canMutate && (
                       <>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          title="Edit"
-                          onClick={() => setEditId(f.id)}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          title="Delete"
-                          onClick={() => setConfirmId(f.id)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                        </Button>
+                        <Tooltip label="Edit">
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label="Edit"
+                            onClick={() => setEditId(f.id)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        </Tooltip>
+                        <Tooltip label="Delete" side="left">
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label="Delete"
+                            onClick={() => setConfirmId(f.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                          </Button>
+                        </Tooltip>
                       </>
                     )}
                   </div>
@@ -187,9 +201,13 @@ export default function ApiFilesPage() {
         confirmLabel="Delete"
         destructive
         onConfirm={() => {
-          if (!confirmId) return;
+          if (!confirmId || !fileToDelete) return;
+          const snapshot = fileToDelete;
           deleteApiFile(confirmId);
-          toast.success("File deleted");
+          undoableToast({
+            message: `"${snapshot.name}" deleted`,
+            onUndo: () => restoreApiFile(snapshot),
+          });
         }}
       />
 

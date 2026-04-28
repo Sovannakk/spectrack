@@ -4,7 +4,10 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
+  AlertCircle,
+  ChevronDown,
   ClipboardList,
+  GitCompare,
   LayoutGrid,
   List as ListIcon,
   Pencil,
@@ -14,7 +17,7 @@ import { toast } from "sonner";
 import { useAppStore } from "@/lib/store";
 import { usePageLoader } from "@/components/page-loader";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { TableSkeleton } from "@/components/loading-skeletons";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +33,15 @@ import { StatusBadge } from "@/components/status-badge";
 import { PageHeader } from "@/components/page-header";
 import { TagInput } from "@/components/tag-input";
 import { EvolutionTimeline } from "@/components/evolution-timeline";
+import { Tooltip } from "@/components/ui/tooltip";
+import { RelativeTime } from "@/components/relative-time";
+import {
+  Dropdown,
+  DropdownItem,
+  DropdownLabel,
+  DropdownMenu,
+  DropdownTrigger,
+} from "@/components/ui/dropdown";
 import { cn, formatDate } from "@/lib/utils";
 import type { ApiVersion } from "@/lib/types";
 
@@ -41,15 +53,35 @@ export default function VersionsPage() {
   const loading = usePageLoader();
   const role = useAppStore((s) => s.currentUser.role);
   const allVersions = useAppStore((s) => s.versions);
+  const allApprovals = useAppStore((s) => s.approvals);
   const updateVersion = useAppStore((s) => s.updateVersion);
   const versions = React.useMemo(
     () => allVersions.filter((v) => v.projectId === projectId),
     [allVersions, projectId],
   );
+  const approvalByToVersion = React.useMemo(() => {
+    const map = new Map<string, (typeof allApprovals)[number]>();
+    for (const a of allApprovals) {
+      if (a.projectId !== projectId) continue;
+      const existing = map.get(a.toVersion);
+      if (
+        !existing ||
+        new Date(a.submittedAt).getTime() >
+          new Date(existing.submittedAt).getTime()
+      ) {
+        map.set(a.toVersion, a);
+      }
+    }
+    return map;
+  }, [allApprovals, projectId]);
 
   const [view, setView] = React.useState<View>("table");
   const [editId, setEditId] = React.useState<string | null>(null);
+  const [expandedRejection, setExpandedRejection] = React.useState<
+    Record<string, boolean>
+  >({});
   const editing = versions.find((v) => v.id === editId);
+  const showRejectionRow = role !== "reviewer";
 
   const canCreate = role === "owner" || role === "contributor";
   const canEdit = role === "owner" || role === "contributor";
@@ -63,34 +95,46 @@ export default function VersionsPage() {
           <>
             <ViewToggle view={view} onChange={setView} />
             {canCreate && (
-              <Link
-                href={`/projects/${projectId}/api-management/upload`}
-                className={cn(buttonVariants())}
+              <Tooltip
+                label={
+                  <span className="inline-flex items-center gap-1">
+                    New version <kbd className="rounded bg-white/20 px-1 font-mono text-[10px]">N</kbd>
+                  </span>
+                }
+                side="bottom"
               >
-                <Plus className="h-4 w-4" /> New version
-              </Link>
+                <Link
+                  href={`/projects/${projectId}/api-management/upload`}
+                  className={cn(buttonVariants())}
+                >
+                  <Plus className="h-4 w-4" /> New version
+                </Link>
+              </Tooltip>
             )}
           </>
         }
       />
 
       {loading ? (
-        <Skeleton className="h-64" />
+        <TableSkeleton />
       ) : versions.length === 0 ? (
         <EmptyState
           icon={<ClipboardList className="h-5 w-5" />}
           title="No versions yet"
           description="Upload your first API spec to create a version."
-          action={
-            canCreate ? (
-              <Link
-                href={`/projects/${projectId}/api-management/upload`}
-                className={cn(buttonVariants())}
-              >
-                <Plus className="h-4 w-4" /> Upload API
-              </Link>
-            ) : undefined
-          }
+          actions={[
+            {
+              label: "Create your first version",
+              href: `/projects/${projectId}/api-management/upload`,
+              roles: ["owner", "contributor"],
+              icon: <Plus className="h-4 w-4" />,
+            },
+            {
+              label: "No versions created yet",
+              roles: ["reviewer"],
+              variant: "muted",
+            },
+          ]}
         />
       ) : view === "table" ? (
         <Table>
@@ -101,58 +145,159 @@ export default function VersionsPage() {
               <TH className="w-32">Status</TH>
               <TH>Created by</TH>
               <TH>Created at</TH>
-              {canEdit && <TH className="w-20 text-right">Actions</TH>}
+              {canEdit && <TH className="w-32 text-right">Actions</TH>}
             </TR>
           </THead>
           <TBody>
             {versions.map((v) => {
               const isEditable = v.status === "draft" || v.status === "rejected";
+              const isRejected = v.status === "rejected";
+              const rejectionApproval = isRejected
+                ? approvalByToVersion.get(v.name)
+                : undefined;
+              const expanded = !!expandedRejection[v.id];
+              const colCount = canEdit ? 6 : 5;
               return (
-                <TR key={v.id}>
-                  <TD>
-                    <Link
-                      href={`/projects/${projectId}/api-management/versions/${v.id}`}
-                      className="font-mono text-sm font-medium text-stone-900 hover:text-orange-600 dark:text-stone-100 dark:hover:text-orange-300"
-                    >
-                      {v.name}
-                    </Link>
-                  </TD>
-                  <TD>
-                    <div className="flex flex-wrap gap-1">
-                      {v.tags.length === 0 ? (
-                        <span className="text-xs text-stone-400">—</span>
-                      ) : (
-                        v.tags.map((t) => (
-                          <Badge key={t} variant="violet">
-                            {t}
-                          </Badge>
-                        ))
-                      )}
-                    </div>
-                  </TD>
-                  <TD>
-                    <StatusBadge status={v.status} />
-                  </TD>
-                  <TD>{v.createdBy}</TD>
-                  <TD>{formatDate(v.createdAt)}</TD>
-                  {canEdit && (
-                    <TD className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        title={
-                          isEditable
-                            ? "Edit"
-                            : "Cannot edit an approved or pending version"
-                        }
-                        disabled={!isEditable}
-                        onClick={() => isEditable && setEditId(v.id)}
+                <React.Fragment key={v.id}>
+                  <TR>
+                    <TD>
+                      <Link
+                        href={`/projects/${projectId}/api-management/versions/${v.id}`}
+                        className="font-mono text-sm font-medium text-stone-900 hover:text-orange-600 dark:text-stone-100 dark:hover:text-orange-300"
                       >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
+                        {v.name}
+                      </Link>
                     </TD>
-                  )}
-                </TR>
+                    <TD>
+                      <div className="flex flex-wrap gap-1">
+                        {v.tags.length === 0 ? (
+                          <span className="text-xs text-stone-400">—</span>
+                        ) : (
+                          v.tags.map((t) => (
+                            <Badge key={t} variant="violet">
+                              {t}
+                            </Badge>
+                          ))
+                        )}
+                      </div>
+                    </TD>
+                    <TD>
+                      <div className="flex items-center gap-1.5">
+                        <StatusBadge status={v.status} />
+                        {showRejectionRow && isRejected && rejectionApproval && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedRejection((s) => ({
+                                ...s,
+                                [v.id]: !s[v.id],
+                              }))
+                            }
+                            aria-label={
+                              expanded
+                                ? "Hide rejection reason"
+                                : "Show rejection reason"
+                            }
+                            className="inline-flex h-5 w-5 items-center justify-center rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40"
+                          >
+                            <AlertCircle className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        {showRejectionRow && isRejected && rejectionApproval && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedRejection((s) => ({
+                                ...s,
+                                [v.id]: !s[v.id],
+                              }))
+                            }
+                            className="inline-flex h-5 w-5 items-center justify-center rounded text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800"
+                          >
+                            <ChevronDown
+                              className={cn(
+                                "h-3.5 w-3.5 transition-transform",
+                                expanded && "rotate-180",
+                              )}
+                            />
+                          </button>
+                        )}
+                      </div>
+                    </TD>
+                    <TD>{v.createdBy}</TD>
+                    <TD>
+                      <RelativeTime timestamp={v.createdAt} />
+                    </TD>
+                    {canEdit && (
+                      <TD className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <CompareDropdown
+                            currentVersionName={v.name}
+                            allVersions={versions}
+                            projectId={projectId}
+                          />
+                          <Tooltip
+                            label={
+                              isEditable
+                                ? "Edit version"
+                                : "Approved & pending versions can't be edited"
+                            }
+                            side="left"
+                          >
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label="Edit version"
+                              disabled={!isEditable}
+                              onClick={() => isEditable && setEditId(v.id)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                          </Tooltip>
+                        </div>
+                      </TD>
+                    )}
+                  </TR>
+                  {showRejectionRow &&
+                    isRejected &&
+                    rejectionApproval &&
+                    expanded && (
+                      <TR>
+                        <TD
+                          colSpan={colCount}
+                          className="bg-red-50/40 dark:bg-red-950/20"
+                        >
+                          <div className="border-l-2 border-red-400 pl-3">
+                            <div className="text-xs font-medium text-red-700 dark:text-red-300">
+                              Rejected
+                              {rejectionApproval.reviewerComment
+                                ? ` · ${formatDate(rejectionApproval.submittedAt)}`
+                                : ""}
+                            </div>
+                            <p className="mt-1 text-sm text-stone-700 dark:text-stone-200">
+                              {rejectionApproval.reviewerComment ??
+                                "No reason was provided."}
+                            </p>
+                            {role === "contributor" && (
+                              <div className="mt-2">
+                                <Link
+                                  href={`/projects/${projectId}/api-management/upload?resubmit=${v.id}`}
+                                  className={cn(
+                                    buttonVariants({
+                                      variant: "outline",
+                                      size: "sm",
+                                    }),
+                                  )}
+                                >
+                                  Fix &amp; resubmit
+                                </Link>
+                              </div>
+                            )}
+                          </div>
+                        </TD>
+                      </TR>
+                    )}
+                </React.Fragment>
               );
             })}
           </TBody>
@@ -174,6 +319,50 @@ export default function VersionsPage() {
         />
       )}
     </div>
+  );
+}
+
+function CompareDropdown({
+  currentVersionName,
+  allVersions,
+  projectId,
+}: {
+  currentVersionName: string;
+  allVersions: ApiVersion[];
+  projectId: string;
+}) {
+  const router = useRouter();
+  const others = allVersions.filter((v) => v.name !== currentVersionName);
+  if (others.length === 0) return null;
+  return (
+    <Dropdown>
+      <Tooltip label="Compare with…" side="left">
+        <DropdownTrigger
+          aria-label="Compare with another version"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
+        >
+          <GitCompare className="h-3.5 w-3.5" />
+        </DropdownTrigger>
+      </Tooltip>
+      <DropdownMenu align="end" className="w-48">
+        <DropdownLabel>Compare with…</DropdownLabel>
+        {others.map((v) => (
+          <DropdownItem
+            key={v.id}
+            onSelect={() =>
+              router.push(
+                `/projects/${projectId}/compare?from=${currentVersionName}&to=${v.name}`,
+              )
+            }
+          >
+            <span className="font-mono">{v.name}</span>
+            <span className="ml-auto text-[10px] text-stone-500">
+              {v.status}
+            </span>
+          </DropdownItem>
+        ))}
+      </DropdownMenu>
+    </Dropdown>
   );
 }
 

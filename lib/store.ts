@@ -50,8 +50,16 @@ interface State {
   notifications: Notification[];
   activities: Activity[];
   activeProjectId: string | null;
+  /** UX-ONB-01: per-project flag indicating the user dismissed the setup checklist */
+  setupDismissed: Record<string, boolean>;
+  /** UX-ONB-02: per-project flag indicating the role explainer modal has been seen */
+  firstVisit: Record<string, boolean>;
+  /** UX-NAV-04: most-recently-visited project IDs (most recent first, max 5) */
+  recentProjectIds: string[];
 
   setActiveProjectId: (id: string | null) => void;
+  dismissSetup: (projectId: string) => void;
+  markFirstVisit: (projectId: string) => void;
   setRole: (role: Role) => void;
   updateCurrentUser: (patch: Partial<User>) => void;
 
@@ -83,6 +91,11 @@ interface State {
     patch: { name?: string; replacementFileName?: string },
   ) => void;
   deleteApiFile: (fileId: string) => void;
+  /** UX-QW-02: re-insert a previously deleted ApiFile (used by undo toast) */
+  restoreApiFile: (file: ApiFile) => void;
+  restoreMember: (member: Member) => void;
+  deleteVersion: (versionId: string) => void;
+  restoreVersion: (version: ApiVersion) => void;
 
   updateVersion: (
     versionId: string,
@@ -103,7 +116,12 @@ interface State {
 
   addComment: (
     approvalId: string,
-    input: { endpoint: string; endpointId?: string; text: string },
+    input: {
+      endpoint: string;
+      endpointId?: string;
+      text: string;
+      mentions?: string[];
+    },
   ) => Comment;
 
   markNotificationRead: (id: string) => void;
@@ -134,8 +152,29 @@ export const useAppStore = create<State>((set, get) => ({
   notifications: initialNotifications,
   activities: initialActivities,
   activeProjectId: null,
+  setupDismissed: {},
+  firstVisit: {},
+  recentProjectIds: [],
 
-  setActiveProjectId: (id) => set({ activeProjectId: id }),
+  setActiveProjectId: (id) =>
+    set((s) => {
+      if (!id) return { activeProjectId: id };
+      const next = [id, ...s.recentProjectIds.filter((p) => p !== id)].slice(
+        0,
+        5,
+      );
+      return { activeProjectId: id, recentProjectIds: next };
+    }),
+
+  dismissSetup: (projectId) =>
+    set((s) => ({
+      setupDismissed: { ...s.setupDismissed, [projectId]: true },
+    })),
+
+  markFirstVisit: (projectId) =>
+    set((s) => ({
+      firstVisit: { ...s.firstVisit, [projectId]: true },
+    })),
 
   setRole: (role) =>
     set((s) => ({ currentUser: { ...s.currentUser, role } })),
@@ -350,6 +389,65 @@ export const useAppStore = create<State>((set, get) => ({
     get().logActivity(file.projectId, "Deleted", file.name);
   },
 
+  restoreApiFile: (file) => {
+    set((s) =>
+      s.apiFiles.some((f) => f.id === file.id)
+        ? s
+        : {
+            apiFiles: [file, ...s.apiFiles],
+            projects: s.projects.map((p) =>
+              p.id === file.projectId
+                ? { ...p, apiCount: p.apiCount + 1 }
+                : p,
+            ),
+          },
+    );
+  },
+
+  restoreMember: (member) => {
+    set((s) =>
+      s.members.some((m) => m.id === member.id)
+        ? s
+        : {
+            members: [...s.members, member],
+            projects: s.projects.map((p) =>
+              p.id === member.projectId
+                ? { ...p, memberCount: p.memberCount + 1 }
+                : p,
+            ),
+          },
+    );
+  },
+
+  deleteVersion: (versionId) => {
+    const v = get().versions.find((x) => x.id === versionId);
+    if (!v) return;
+    set((s) => ({
+      versions: s.versions.filter((x) => x.id !== versionId),
+      projects: s.projects.map((p) =>
+        p.id === v.projectId
+          ? { ...p, versionCount: Math.max(0, p.versionCount - 1) }
+          : p,
+      ),
+    }));
+    get().logActivity(v.projectId, "Deleted", `version ${v.name}`);
+  },
+
+  restoreVersion: (version) => {
+    set((s) =>
+      s.versions.some((v) => v.id === version.id)
+        ? s
+        : {
+            versions: [version, ...s.versions],
+            projects: s.projects.map((p) =>
+              p.id === version.projectId
+                ? { ...p, versionCount: p.versionCount + 1 }
+                : p,
+            ),
+          },
+    );
+  },
+
   updateVersion: (versionId, patch) => {
     const version = get().versions.find((v) => v.id === versionId);
     if (!version) return;
@@ -514,7 +612,7 @@ export const useAppStore = create<State>((set, get) => ({
     );
   },
 
-  addComment: (approvalId, { endpoint, endpointId, text }) => {
+  addComment: (approvalId, { endpoint, endpointId, text, mentions }) => {
     const approval = get().approvals.find((a) => a.id === approvalId);
     const { currentUser } = get();
     const comment: Comment = {
@@ -528,15 +626,11 @@ export const useAppStore = create<State>((set, get) => ({
     };
     let extraNotifications: Notification[] = [];
     if (approval) {
-      // WORK-02: notify all other project members about the comment
       const otherMembers = get().members.filter(
         (m) =>
           m.projectId === approval.projectId && m.email !== currentUser.email,
       );
       const baseMsg = `${currentUser.name} commented on ${endpoint} in ${approval.fromVersion} → ${approval.toVersion}`;
-      // we keep one notification (a single feed) — the spec says "for all other members"
-      // since this is a single feed, we add a single notification entry tied to the project.
-      // (Each member sees the same shared feed.)
       if (otherMembers.length > 0) {
         extraNotifications = [
           {
@@ -549,6 +643,27 @@ export const useAppStore = create<State>((set, get) => ({
             href: `/projects/${approval.projectId}/workflow/${approval.id}`,
           },
         ];
+      }
+      // UX-WF-04: per-user mention notifications. Each mentioned member gets
+      // a separate notification with type: "mention".
+      if (mentions && mentions.length > 0) {
+        const mentioned = otherMembers.filter((m) =>
+          mentions.includes(m.name),
+        );
+        for (const m of mentioned) {
+          extraNotifications.push({
+            id: uid("n"),
+            projectId: approval.projectId,
+            type: "mention",
+            message: `${currentUser.name} mentioned you in a comment on ${endpoint}`,
+            read: false,
+            createdAt: nowIso(),
+            href: `/projects/${approval.projectId}/workflow/${approval.id}`,
+          });
+          // Reference the mentioned member to satisfy lint and
+          // make the intent explicit (per-user notification fanout).
+          void m.id;
+        }
       }
     }
     set((s) => ({

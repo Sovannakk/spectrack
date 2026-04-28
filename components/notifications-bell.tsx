@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
+  AtSign,
   Bell,
   CheckCircle2,
   MessageSquare,
@@ -12,12 +13,14 @@ import {
 } from "lucide-react";
 import { useAppStore, useUnreadCount } from "@/lib/store";
 import { cn, timeAgo } from "@/lib/utils";
+import { Tooltip } from "@/components/ui/tooltip";
 import type { Notification, NotificationType } from "@/lib/types";
 
 const typeIcon: Record<NotificationType, React.ReactNode> = {
   approval: <CheckCircle2 className="h-3.5 w-3.5 text-blue-600" />,
   comment: <MessageSquare className="h-3.5 w-3.5 text-stone-500" />,
   rejection: <XCircle className="h-3.5 w-3.5 text-red-600" />,
+  mention: <AtSign className="h-3.5 w-3.5 text-blue-600" />,
 };
 
 interface Props {
@@ -70,17 +73,36 @@ export function NotificationsBell({ projectId }: Props) {
 
   return (
     <div ref={ref} className="relative">
-      <button
-        type="button"
-        aria-label="Notifications"
-        onClick={() => setOpen((o) => !o)}
-        className="relative inline-flex h-8 w-8 items-center justify-center rounded-md text-stone-500 transition-colors hover:bg-white/60 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800/60 dark:hover:text-stone-100"
+      <Tooltip
+        label={
+          unread > 0
+            ? `${unread} unread notification${unread === 1 ? "" : "s"}`
+            : "Notifications"
+        }
+        side="bottom"
       >
-        <Bell className="h-4 w-4" />
-        {unread > 0 && (
-          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-orange-500 ring-2 ring-white shadow-[0_0_8px_rgba(249,115,22,0.6)] dark:ring-stone-950" />
-        )}
-      </button>
+        <button
+          type="button"
+          aria-label={
+            unread > 0
+              ? `Notifications, ${unread} unread`
+              : "Notifications"
+          }
+          onClick={() => setOpen((o) => !o)}
+          className="relative inline-flex h-8 w-8 items-center justify-center rounded-md text-stone-500 transition-colors hover:bg-white/60 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800/60 dark:hover:text-stone-100"
+        >
+          <Bell className="h-4 w-4" />
+          {unread > 0 && (
+            <span
+              className={cn(
+                "absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-gradient-to-b from-orange-500 to-orange-600 px-1 text-[10px] font-semibold text-white tabular-nums shadow-[0_2px_4px_-1px_rgba(249,115,22,0.5),0_0_0_2px_rgba(255,255,255,1)] dark:shadow-[0_2px_4px_-1px_rgba(249,115,22,0.5),0_0_0_2px_rgb(12,10,9)]",
+              )}
+            >
+              {unread > 9 ? "9+" : unread}
+            </span>
+          )}
+        </button>
+      </Tooltip>
       {open && (
         <div className="glass-strong absolute right-0 top-full z-40 mt-2 w-80 overflow-hidden rounded-xl">
           <div className="flex items-center justify-between border-b border-white/40 px-3 py-2 dark:border-stone-800/60">

@@ -27,7 +27,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { DashboardSkeleton } from "@/components/loading-skeletons";
 import { ActivityItem } from "@/components/activity-item";
 import { StatusBadge } from "@/components/status-badge";
 import { PageHeader } from "@/components/page-header";
@@ -36,6 +36,8 @@ import { ChangeTypeBadge } from "@/components/change-type-badge";
 import { RatioBar } from "@/components/ratio-bar";
 import { ApproveModal } from "@/components/approve-reject-modals";
 import { EmptyState } from "@/components/ui/empty-state";
+import { WelcomeChecklist } from "@/components/welcome-checklist";
+import { Tooltip } from "@/components/ui/tooltip";
 import { cn, formatDate } from "@/lib/utils";
 
 export default function DashboardPage() {
@@ -52,6 +54,8 @@ export default function DashboardPage() {
   const allApprovals = useAppStore((s) => s.approvals);
   const allDiffs = useAppStore((s) => s.diffs);
   const allActivities = useAppStore((s) => s.activities);
+  const setupDismissed = useAppStore((s) => s.setupDismissed);
+  const dismissSetup = useAppStore((s) => s.dismissSetup);
 
   const project = React.useMemo(
     () => allProjects.find((p) => p.id === projectId),
@@ -112,17 +116,27 @@ export default function DashboardPage() {
     .filter((d) => d.changeType === "breaking")
     .slice(0, 3);
 
-  if (loading) {
+  if (loading) return <DashboardSkeleton />;
+
+  // UX-ONB-01: empty-project welcome checklist
+  const showWelcome =
+    apiFiles.length === 0 && !setupDismissed[projectId];
+  if (showWelcome) {
     return (
-      <div className="space-y-8">
-        <Skeleton className="h-12 w-72" />
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-28" />
-          ))}
-        </div>
-        <Skeleton className="h-64" />
-      </div>
+      <WelcomeChecklist
+        projectId={projectId}
+        projectName={project?.name ?? "this project"}
+        status={{
+          uploadedApi: apiFiles.length > 0,
+          createdVersion: versions.length > 0,
+          invitedTeammate: members.length > 1,
+        }}
+        isOwner={role === "owner"}
+        onDismiss={() => dismissSetup(projectId)}
+        onInviteClick={() =>
+          router.push(`/projects/${projectId}/settings/members`)
+        }
+      />
     );
   }
 
@@ -256,25 +270,45 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
             {(role === "owner" || role === "contributor") && (
+              <Tooltip
+                label={
+                  <span className="inline-flex items-center gap-1">
+                    Upload API{" "}
+                    <kbd className="rounded bg-white/20 px-1 font-mono text-[10px]">U</kbd>
+                  </span>
+                }
+                side="left"
+              >
+                <Link
+                  href={`/projects/${projectId}/api-management/upload`}
+                  className={cn(
+                    buttonVariants({ variant: "outline" }),
+                    "justify-start",
+                  )}
+                >
+                  <Upload className="h-4 w-4" /> Upload API
+                </Link>
+              </Tooltip>
+            )}
+            <Tooltip
+              label={
+                <span className="inline-flex items-center gap-1">
+                  Compare versions{" "}
+                  <kbd className="rounded bg-white/20 px-1 font-mono text-[10px]">C</kbd>
+                </span>
+              }
+              side="left"
+            >
               <Link
-                href={`/projects/${projectId}/api-management/upload`}
+                href={`/projects/${projectId}/compare`}
                 className={cn(
                   buttonVariants({ variant: "outline" }),
                   "justify-start",
                 )}
               >
-                <Upload className="h-4 w-4" /> Upload API
+                <GitCompare className="h-4 w-4" /> Compare versions
               </Link>
-            )}
-            <Link
-              href={`/projects/${projectId}/compare`}
-              className={cn(
-                buttonVariants({ variant: "outline" }),
-                "justify-start",
-              )}
-            >
-              <GitCompare className="h-4 w-4" /> Compare versions
-            </Link>
+            </Tooltip>
             <Link
               href={`/projects/${projectId}/workflow`}
               className={cn(

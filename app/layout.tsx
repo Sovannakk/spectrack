@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
+import { CommandPalette } from "@/components/command-palette";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -31,7 +32,17 @@ export default function RootLayout({
     >
       <body className="min-h-full">
         {children}
-        <Toaster position="top-right" richColors closeButton />
+        <CommandPalette />
+        <Toaster
+          position="bottom-right"
+          richColors
+          closeButton
+          toastOptions={{
+            classNames: {
+              toast: "rounded-xl border-stone-200/70 dark:border-stone-800/70",
+            },
+          }}
+        />
       </body>
     </html>
   );

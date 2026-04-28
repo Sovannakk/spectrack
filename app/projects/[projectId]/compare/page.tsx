@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { GitCompare, Send } from "lucide-react";
+import { Check, Copy, GitCompare, Send } from "lucide-react";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/store";
 import { usePageLoader } from "@/components/page-loader";
@@ -15,16 +15,17 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { DiffTable } from "@/components/diff-table";
+import { CodeDiff } from "@/components/code-diff";
+import { DiffSummaryBar, type DiffFilter } from "@/components/diff-summary-bar";
 import { CompareAIExplanation } from "@/components/compare-ai-explanation";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
+import { Tooltip } from "@/components/ui/tooltip";
 import { fireAlerts } from "@/lib/alerts";
-import { cn } from "@/lib/utils";
-
-type FilterMode = "all" | "breaking" | "non-breaking";
+import { subTypeConfig } from "@/components/change-type-badge";
+import type { Diff } from "@/lib/types";
 
 export default function ComparePage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -54,10 +55,11 @@ export default function ComparePage() {
 
   const [from, setFrom] = React.useState<string>("");
   const [to, setTo] = React.useState<string>("");
-  const [filter, setFilter] = React.useState<FilterMode>("all");
+  const [filter, setFilter] = React.useState<DiffFilter>("all");
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
 
-  // Pre-select from search params (set by Dashboard "View full diff")
+  // UX-QW-03: pre-select from search params
   React.useEffect(() => {
     const f = searchParams.get("from");
     const t = searchParams.get("to");
@@ -78,9 +80,36 @@ export default function ComparePage() {
   }, [allDiffs, from, to]);
 
   const filteredDiffs = React.useMemo(() => {
-    if (filter === "all") return diffs;
-    return diffs.filter((d) => d.changeType === filter);
+    return diffs.filter((d) => matchesFilter(d, filter));
   }, [diffs, filter]);
+
+  const versionsSelected = !!from && !!to && from !== to;
+
+  const counts: Record<DiffFilter, number | null> = versionsSelected
+    ? {
+        all: diffs.length,
+        breaking: diffs.filter((d) => d.changeType === "breaking").length,
+        "non-breaking": diffs.filter((d) => d.changeType === "non-breaking")
+          .length,
+        removed: diffs.filter((d) => d.subType === "endpoint_removed").length,
+        added: diffs.filter((d) => d.subType === "endpoint_added").length,
+      }
+    : {
+        all: null,
+        breaking: null,
+        "non-breaking": null,
+        removed: null,
+        added: null,
+      };
+
+  const handleCopyDiff = async () => {
+    if (!versionsSelected) return;
+    const md = formatDiffMarkdown(from, to, diffs);
+    await navigator.clipboard.writeText(md);
+    setCopied(true);
+    toast.success("Diff copied to clipboard");
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   if (loading) return <Skeleton className="h-96" />;
 
@@ -99,22 +128,52 @@ export default function ComparePage() {
     label: `${v.name} (${v.status})`,
   }));
 
-  const breakingCount = diffs.filter((d) => d.changeType === "breaking").length;
-  const nonBreakingCount = diffs.filter(
-    (d) => d.changeType === "non-breaking",
-  ).length;
+  const copyButton = (
+    <Button
+      variant="outline"
+      onClick={handleCopyDiff}
+      disabled={!versionsSelected}
+    >
+      {copied ? (
+        <>
+          <Check className="h-4 w-4" /> Copied!
+        </>
+      ) : (
+        <>
+          <Copy className="h-4 w-4" /> Copy diff
+        </>
+      )}
+    </Button>
+  );
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         title="Compare versions"
         description="Side-by-side diff between two versions of your API specification."
+        actions={
+          <>
+            {!versionsSelected ? (
+              <Tooltip label="Select two versions first">
+                <span className="inline-flex">{copyButton}</span>
+              </Tooltip>
+            ) : (
+              copyButton
+            )}
+            {role === "contributor" && diffs.length > 0 && (
+              <Button onClick={() => setConfirmOpen(true)}>
+                <Send className="h-4 w-4" /> Submit for review
+              </Button>
+            )}
+          </>
+        }
       />
 
-      <Card>
-        <CardContent className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
+      {/* UX-DIFF-03 — sticky version selector (sits below TopNav at top:56px) */}
+      <div className="sticky top-14 z-20 -mx-4 border-b border-stone-200/60 bg-white/80 px-4 py-3 backdrop-blur dark:border-stone-800/60 dark:bg-stone-950/80 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div className="space-y-1.5">
-            <Label>From version</Label>
+            <Label className="text-xs">From version</Label>
             <Select
               options={versionOptions}
               value={from}
@@ -122,18 +181,28 @@ export default function ComparePage() {
             />
           </div>
           <div className="space-y-1.5">
-            <Label>To version</Label>
+            <Label className="text-xs">To version</Label>
             <Select options={versionOptions} value={to} onValueChange={setTo} />
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
+
+      {/* UX-DIFF-02/03 — sticky summary/filter bar (sits below the version selector) */}
+      <div className="sticky top-[8.5rem] z-10 -mx-4 border-b border-stone-200/60 bg-white/70 px-4 py-2 backdrop-blur dark:border-stone-800/60 dark:bg-stone-950/70 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <DiffSummaryBar
+          value={filter}
+          onChange={setFilter}
+          counts={counts}
+          disabled={!versionsSelected}
+        />
+      </div>
 
       {from && to && from === to ? (
         <p className="text-sm text-stone-500">
           Pick two different versions to see the diff.
         </p>
       ) : (
-        <>
+        <div className="space-y-6">
           <CompareAIExplanation
             fromVersion={from}
             toVersion={to}
@@ -147,29 +216,16 @@ export default function ComparePage() {
                 <span className="mx-2 text-stone-400">→</span>
                 <span className="font-mono">{to}</span>
               </CardTitle>
-              <FilterPills
-                value={filter}
-                onChange={setFilter}
-                counts={{
-                  all: diffs.length,
-                  breaking: breakingCount,
-                  "non-breaking": nonBreakingCount,
-                }}
-              />
+              <span className="text-xs text-stone-500">
+                {filteredDiffs.length} of {diffs.length}{" "}
+                {diffs.length === 1 ? "change" : "changes"}
+              </span>
             </CardHeader>
             <CardContent>
-              <DiffTable diffs={filteredDiffs} showImpact />
+              <CodeDiff diffs={filteredDiffs} />
             </CardContent>
           </Card>
-
-          {role === "contributor" && diffs.length > 0 && (
-            <div className="flex justify-end">
-              <Button variant="primary" onClick={() => setConfirmOpen(true)}>
-                <Send className="h-4 w-4" /> Submit for review
-              </Button>
-            </div>
-          )}
-        </>
+        </div>
       )}
 
       <ConfirmModal
@@ -192,37 +248,61 @@ export default function ComparePage() {
   );
 }
 
-function FilterPills({
-  value,
-  onChange,
-  counts,
-}: {
-  value: FilterMode;
-  onChange: (v: FilterMode) => void;
-  counts: { all: number; breaking: number; "non-breaking": number };
-}) {
-  const options: { key: FilterMode; label: string }[] = [
-    { key: "all", label: `All (${counts.all})` },
-    { key: "breaking", label: `Breaking (${counts.breaking})` },
-    { key: "non-breaking", label: `Non-breaking (${counts["non-breaking"]})` },
-  ];
-  return (
-    <div className="inline-flex items-center rounded-md border border-stone-200/70 bg-white p-0.5 dark:border-stone-800/70 dark:bg-stone-950">
-      {options.map((o) => (
-        <button
-          key={o.key}
-          type="button"
-          onClick={() => onChange(o.key)}
-          className={cn(
-            "inline-flex h-7 items-center rounded-md px-2.5 text-xs font-medium transition-colors",
-            value === o.key
-              ? "bg-stone-100 text-stone-900 dark:bg-stone-800 dark:text-stone-100"
-              : "text-stone-500 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100",
-          )}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
+function matchesFilter(d: Diff, filter: DiffFilter): boolean {
+  switch (filter) {
+    case "all":
+      return true;
+    case "breaking":
+      return d.changeType === "breaking";
+    case "non-breaking":
+      return d.changeType === "non-breaking";
+    case "removed":
+      return d.subType === "endpoint_removed";
+    case "added":
+      return d.subType === "endpoint_added";
+  }
+}
+
+/** UX-DIFF-04 — render the current diff set as a markdown report. */
+function formatDiffMarkdown(from: string, to: string, diffs: Diff[]): string {
+  const breaking = diffs.filter((d) => d.changeType === "breaking");
+  const nonBreaking = diffs.filter((d) => d.changeType === "non-breaking");
+
+  const lines: string[] = [];
+  lines.push(`## API Diff: ${from} → ${to}`);
+  lines.push("");
+
+  if (breaking.length > 0) {
+    lines.push(`### Breaking changes (${breaking.length})`);
+    lines.push("");
+    for (const d of breaking) {
+      lines.push(`#### ${d.endpoint}`);
+      lines.push(`- **Type**: ${subTypeConfig[d.subType].label}`);
+      if (d.oldValue && d.oldValue !== "-")
+        lines.push(`- **Old**: \`${d.oldValue}\``);
+      if (d.newValue && d.newValue !== "-")
+        lines.push(`- **New**: \`${d.newValue}\``);
+      lines.push(`- ${d.description}`);
+      lines.push("");
+    }
+  }
+
+  if (nonBreaking.length > 0) {
+    lines.push(`### Non-breaking changes (${nonBreaking.length})`);
+    lines.push("");
+    for (const d of nonBreaking) {
+      lines.push(`#### ${d.endpoint}`);
+      lines.push(`- **Type**: ${subTypeConfig[d.subType].label}`);
+      if (d.newValue && d.newValue !== "-")
+        lines.push(`- **New**: \`${d.newValue}\``);
+      lines.push(`- ${d.description}`);
+      lines.push("");
+    }
+  }
+
+  if (diffs.length === 0) {
+    lines.push("_No differences detected._");
+  }
+
+  return lines.join("\n");
 }
