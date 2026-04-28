@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useParams } from "next/navigation";
-import { Bell, CheckCircle2, MessageSquare, XCircle } from "lucide-react";
+import { AtSign, Bell, CheckCircle2, MessageSquare, XCircle } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { usePageLoader } from "@/components/page-loader";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,6 +28,10 @@ const typeConfig: Record<
   rejection: {
     icon: <XCircle className="h-3.5 w-3.5" />,
     tone: "bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-300",
+  },
+  mention: {
+    icon: <AtSign className="h-3.5 w-3.5" />,
+    tone: "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300",
   },
 };
 
