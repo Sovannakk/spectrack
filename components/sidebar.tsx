@@ -15,6 +15,7 @@ import {
   GitCompare,
   History,
   LayoutDashboard,
+  Network,
   Plus,
   Settings,
   Upload,
@@ -270,7 +271,14 @@ export function Sidebar({
         </div>
       </nav>
 
-      <div className="border-t border-white/40 p-3 dark:border-stone-800/60">
+      <div className="space-y-0.5 border-t border-white/40 p-3 dark:border-stone-800/60">
+        <SidebarLink
+          href={`/projects/${projectId}/workflow-diagram`}
+          active={pathname === `/projects/${projectId}/workflow-diagram`}
+          icon={<Network className="h-4 w-4" />}
+        >
+          Workflow diagram
+        </SidebarLink>
         <SidebarLink
           href="/profile"
           active={pathname === "/profile"}
